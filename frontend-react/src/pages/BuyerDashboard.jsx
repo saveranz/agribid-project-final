@@ -196,7 +196,9 @@ const BuyerDashboard = () => {
 
   // Function to fetch payment statuses for winning bids
   const fetchPaymentStatusesForBids = async (bids) => {
+    console.log('Fetching payment statuses for bids:', bids);
     const winningBids = bids.filter(bid => bid.is_winning === true || bid.status === 'Winning');
+    console.log('Winning bids found:', winningBids.length, winningBids);
     
     if (winningBids.length === 0) return;
     
@@ -204,7 +206,9 @@ const BuyerDashboard = () => {
     await Promise.all(
       winningBids.map(async (bid) => {
         try {
+          console.log(`Fetching payment status for bid ${bid.id}...`);
           const response = await getPaymentStatus(bid.id);
+          console.log(`Payment status response for bid ${bid.id}:`, response);
           if (response.success) {
             statuses[bid.id] = response.data;
           }
@@ -214,6 +218,7 @@ const BuyerDashboard = () => {
       })
     );
     
+    console.log('All payment statuses fetched:', statuses);
     setPaymentStatuses(statuses);
   };
 
@@ -2386,8 +2391,33 @@ const BuyerDashboard = () => {
                                 )}
                               </div>
                               
+                              {/* Debug: Show bid info */}
+                              {console.log('Bid card rendering:', {
+                                bidId: bid.id,
+                                status: bid.status,
+                                is_winning: bid.is_winning,
+                                hasPaymentStatus: !!paymentStatuses[bid.id],
+                                paymentStatus: paymentStatuses[bid.id]
+                              })}
+                              
                               {/* Payment Transparency Card for Winning Bids */}
-                              {(bid.status === "Winning" || bid.is_winning) && paymentStatuses[bid.id] && (
+                              {(bid.status === "Winning" || bid.is_winning) && (
+                                <>
+                                  {!paymentStatuses[bid.id] ? (
+                                    <div className="mt-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg p-4 border-2 border-yellow-200 dark:border-yellow-700">
+                                      <div className="flex items-center">
+                                        <Clock className="w-5 h-5 text-yellow-600 mr-2" />
+                                        <div>
+                                          <h5 className="font-semibold text-gray-900 dark:text-white">
+                                            🎉 Congratulations! You're Winning!
+                                          </h5>
+                                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                            Payment tracking will be available once the auction ends and is finalized by the seller.
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
                                 <div className="mt-4 bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/10 dark:to-blue-900/10 rounded-lg p-4 border-2 border-green-200 dark:border-green-700">
                                   <div className="flex items-center justify-between mb-3">
                                     <h5 className="font-semibold text-gray-900 dark:text-white flex items-center">
@@ -2522,6 +2552,8 @@ const BuyerDashboard = () => {
                                     </div>
                                   )}
                                 </div>
+                                  )}
+                                </>
                               )}
                               
                               <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-end">
