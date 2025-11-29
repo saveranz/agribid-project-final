@@ -40,6 +40,7 @@ import { getMyBids } from "../api/Bid";
 import { getNotifications } from "../api/Notification";
 import { getFavorites, addFavorite, removeFavorite } from "../api/Favorite";
 import { logout } from "../api/Auth";
+import { getPaymentStatus, submitPayment, getPaymentsByBid } from "../api/AuctionPayment";
 
 const BuyerDashboard = () => {
   const navigate = useNavigate();
@@ -73,6 +74,20 @@ const BuyerDashboard = () => {
   const [bidFilterDate, setBidFilterDate] = useState("");
   const [bidFilterStatus, setBidFilterStatus] = useState("");
   const [filteredBids, setFilteredBids] = useState([]);
+  
+  // Auction payment states
+  const [paymentStatuses, setPaymentStatuses] = useState({}); // Map of bidId -> payment status
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedBidForPayment, setSelectedBidForPayment] = useState(null);
+  const [paymentFormData, setPaymentFormData] = useState({
+    amount: '',
+    payment_type: 'downpayment',
+    payment_method: 'gcash',
+    payment_reference: '',
+    payment_proof: null,
+    notes: ''
+  });
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   
   // Profile statistics and ratings
   const [profileStats, setProfileStats] = useState({
@@ -179,6 +194,29 @@ const BuyerDashboard = () => {
     fetchAllData();
   }, []);
 
+  // Function to fetch payment statuses for winning bids
+  const fetchPaymentStatusesForBids = async (bids) => {
+    const winningBids = bids.filter(bid => bid.is_winning === true || bid.status === 'Winning');
+    
+    if (winningBids.length === 0) return;
+    
+    const statuses = {};
+    await Promise.all(
+      winningBids.map(async (bid) => {
+        try {
+          const response = await getPaymentStatus(bid.id);
+          if (response.success) {
+            statuses[bid.id] = response.data;
+          }
+        } catch (error) {
+          console.error(`Failed to fetch payment status for bid ${bid.id}:`, error);
+        }
+      })
+    );
+    
+    setPaymentStatuses(statuses);
+  };
+
   // Refetch orders when returning from checkout or other pages
   useEffect(() => {
     const refetchOrders = async () => {
@@ -282,7 +320,11 @@ const BuyerDashboard = () => {
       // Process bids
       if (bidsResponse.status === 'fulfilled' && bidsResponse.value.data?.success) {
         console.log('Bids data:', bidsResponse.value.data.data);
-        setBiddingActivity(bidsResponse.value.data.data || []);
+        const bids = bidsResponse.value.data.data || [];
+        setBiddingActivity(bids);
+        
+        // Fetch payment status for winning bids
+        fetchPaymentStatusesForBids(bids);
       } else if (bidsResponse.status === 'rejected') {
         console.error('Failed to fetch bids:', bidsResponse.reason);
       }
@@ -2344,6 +2386,144 @@ const BuyerDashboard = () => {
                                 )}
                               </div>
                               
+                              {/* Payment Transparency Card for Winning Bids */}
+                              {(bid.status === "Winning" || bid.is_winning) && paymentStatuses[bid.id] && (
+                                <div className="mt-4 bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/10 dark:to-blue-900/10 rounded-lg p-4 border-2 border-green-200 dark:border-green-700">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h5 className="font-semibold text-gray-900 dark:text-white flex items-center">
+                                      <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                                      Payment Status
+                                    </h5>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                      paymentStatuses[bid.id].payment_summary.payment_status === 'paid'
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                        : paymentStatuses[bid.id].payment_summary.payment_status === 'partial'
+                                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                        : paymentStatuses[bid.id].payment_summary.is_overdue
+                                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                    }`}>
+                                      {paymentStatuses[bid.id].payment_summary.is_overdue 
+                                        ? 'OVERDUE' 
+                                        : paymentStatuses[bid.id].payment_summary.payment_status.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 gap-4 mb-3">
+                                    <div>
+                                      <p className="text-xs text-gray-600 dark:text-gray-400">Winning Bid</p>
+                                      <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                        ₱{paymentStatuses[bid.id].payment_summary.winning_bid_amount?.toLocaleString()}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-600 dark:text-gray-400">Total Paid</p>
+                                      <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                        ₱{paymentStatuses[bid.id].payment_summary.total_paid?.toLocaleString()}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-600 dark:text-gray-400">Remaining Balance</p>
+                                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                        ₱{paymentStatuses[bid.id].payment_summary.remaining_balance?.toLocaleString()}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-600 dark:text-gray-400">Payment Deadline</p>
+                                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        {paymentStatuses[bid.id].payment_summary.payment_deadline 
+                                          ? new Date(paymentStatuses[bid.id].payment_summary.payment_deadline).toLocaleDateString('en-US', {
+                                              month: 'short',
+                                              day: 'numeric',
+                                              year: 'numeric'
+                                            })
+                                          : 'N/A'}
+                                      </p>
+                                      {paymentStatuses[bid.id].payment_summary.days_until_deadline !== null && (
+                                        <p className={`text-xs ${
+                                          paymentStatuses[bid.id].payment_summary.days_until_deadline < 0
+                                            ? 'text-red-600 dark:text-red-400'
+                                            : paymentStatuses[bid.id].payment_summary.days_until_deadline <= 1
+                                            ? 'text-orange-600 dark:text-orange-400'
+                                            : 'text-gray-600 dark:text-gray-400'
+                                        }`}>
+                                          {paymentStatuses[bid.id].payment_summary.days_until_deadline < 0
+                                            ? `${Math.abs(paymentStatuses[bid.id].payment_summary.days_until_deadline)} days overdue`
+                                            : `${paymentStatuses[bid.id].payment_summary.days_until_deadline} days remaining`}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Payment History */}
+                                  {paymentStatuses[bid.id].payment_history?.length > 0 && (
+                                    <div className="mb-3 border-t border-green-200 dark:border-green-700 pt-3">
+                                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Payment History:</p>
+                                      <div className="space-y-1">
+                                        {paymentStatuses[bid.id].payment_history.map((payment, idx) => (
+                                          <div key={idx} className="flex justify-between items-center text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">
+                                              ₱{payment.amount?.toLocaleString()} ({payment.payment_method}) • {
+                                                new Date(payment.payment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                              }
+                                            </span>
+                                            <span className="text-green-600 dark:text-green-400 font-semibold">✓ Verified</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Pending Payments */}
+                                  {paymentStatuses[bid.id].pending_payments?.length > 0 && (
+                                    <div className="mb-3 border-t border-green-200 dark:border-green-700 pt-3">
+                                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Pending Verification:</p>
+                                      <div className="space-y-1">
+                                        {paymentStatuses[bid.id].pending_payments.map((payment, idx) => (
+                                          <div key={idx} className="flex justify-between items-center text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">
+                                              ₱{payment.amount?.toLocaleString()} ({payment.payment_method})
+                                            </span>
+                                            <span className="text-yellow-600 dark:text-yellow-400 font-semibold">⏳ Pending</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Make Payment Button */}
+                                  {paymentStatuses[bid.id].payment_summary.payment_status !== 'paid' && (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedBidForPayment(bid);
+                                        setPaymentFormData({
+                                          ...paymentFormData,
+                                          amount: paymentStatuses[bid.id].payment_summary.payment_status === 'unpaid'
+                                            ? paymentStatuses[bid.id].payment_summary.minimum_downpayment
+                                            : paymentStatuses[bid.id].payment_summary.remaining_balance,
+                                          payment_type: paymentStatuses[bid.id].payment_summary.payment_status === 'unpaid' ? 'downpayment' : 'partial'
+                                        });
+                                        setShowPaymentModal(true);
+                                      }}
+                                      className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center"
+                                    >
+                                      <CreditCard className="w-4 h-4 mr-2" />
+                                      {paymentStatuses[bid.id].payment_summary.payment_status === 'unpaid' 
+                                        ? `Pay Downpayment (₱${paymentStatuses[bid.id].payment_summary.minimum_downpayment?.toLocaleString()})`
+                                        : 'Make Payment'}
+                                    </button>
+                                  )}
+                                  
+                                  {paymentStatuses[bid.id].payment_summary.payment_status === 'paid' && (
+                                    <div className="bg-green-100 dark:bg-green-900/30 rounded-lg p-3 text-center">
+                                      <p className="text-sm font-semibold text-green-800 dark:text-green-400">
+                                        ✓ Fully Paid • {paymentStatuses[bid.id].fulfillment.status.replace('_', ' ').toUpperCase()}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
                               <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-end">
                                 <Clock className="w-3 h-3 mr-1" />
                                 Ends: {bid.expiresIn}
@@ -2773,6 +2953,259 @@ const BuyerDashboard = () => {
         </div>
         );
       })()}
+
+      {/* Payment Submission Modal */}
+      {showPaymentModal && selectedBidForPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                    <CreditCard className="w-6 h-6 mr-2 text-green-600" />
+                    Submit Payment
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    {selectedBidForPayment.productName} • Bid #{selectedBidForPayment.id}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setPaymentFormData({
+                      amount: '',
+                      payment_type: 'downpayment',
+                      payment_method: 'gcash',
+                      payment_reference: '',
+                      payment_proof: null,
+                      notes: ''
+                    });
+                  }}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  disabled={isSubmittingPayment}
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setIsSubmittingPayment(true);
+              
+              try {
+                const paymentData = {
+                  bid_id: selectedBidForPayment.id,
+                  amount: parseFloat(paymentFormData.amount),
+                  payment_type: paymentFormData.payment_type,
+                  payment_method: paymentFormData.payment_method,
+                  payment_reference: paymentFormData.payment_reference,
+                  payment_proof: paymentFormData.payment_proof,
+                  notes: paymentFormData.notes
+                };
+                
+                const response = await submitPayment(paymentData);
+                
+                if (response.success) {
+                  alert('Payment submitted successfully! Awaiting seller verification.');
+                  setShowPaymentModal(false);
+                  setPaymentFormData({
+                    amount: '',
+                    payment_type: 'downpayment',
+                    payment_method: 'gcash',
+                    payment_reference: '',
+                    payment_proof: null,
+                    notes: ''
+                  });
+                  // Refresh payment statuses
+                  fetchPaymentStatusesForBids(biddingActivity);
+                } else {
+                  alert('Failed to submit payment: ' + (response.message || 'Unknown error'));
+                }
+              } catch (error) {
+                console.error('Payment submission error:', error);
+                alert('Failed to submit payment. Please try again.');
+              } finally {
+                setIsSubmittingPayment(false);
+              }
+            }} className="p-6 space-y-6">
+              {/* Payment Summary */}
+              {paymentStatuses[selectedBidForPayment.id] && (
+                <div className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                  <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Payment Summary</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-600 dark:text-gray-400">Winning Bid Amount</p>
+                      <p className="font-bold text-gray-900 dark:text-white">
+                        ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.winning_bid_amount?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 dark:text-gray-400">Already Paid</p>
+                      <p className="font-bold text-green-600">
+                        ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.total_paid?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 dark:text-gray-400">Remaining Balance</p>
+                      <p className="font-bold text-orange-600">
+                        ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.remaining_balance?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 dark:text-gray-400">Minimum Downpayment</p>
+                      <p className="font-bold text-gray-900 dark:text-white">
+                        ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.minimum_downpayment?.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Amount */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Payment Amount *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">₱</span>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    value={paymentFormData.amount}
+                    onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: e.target.value })}
+                    className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="0.00"
+                  />
+                </div>
+                {paymentStatuses[selectedBidForPayment.id] && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Min: ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.minimum_downpayment?.toLocaleString()} • 
+                    Max: ₱{paymentStatuses[selectedBidForPayment.id].payment_summary.remaining_balance?.toLocaleString()}
+                  </p>
+                )}
+              </div>
+
+              {/* Payment Type */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Payment Type *
+                </label>
+                <select
+                  required
+                  value={paymentFormData.payment_type}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_type: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="downpayment">Downpayment</option>
+                  <option value="partial">Partial Payment</option>
+                  <option value="final">Final Payment</option>
+                  <option value="full">Full Payment</option>
+                </select>
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Payment Method *
+                </label>
+                <select
+                  required
+                  value={paymentFormData.payment_method}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_method: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="gcash">GCash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="agribidpay">AgriBidPay</option>
+                  <option value="cod">Cash on Delivery</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+
+              {/* Payment Reference */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Payment Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={paymentFormData.payment_reference}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_reference: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="e.g., GCASH123456789"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Transaction ID or reference number from your payment
+                </p>
+              </div>
+
+              {/* Payment Proof Upload */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Payment Proof (Screenshot/Receipt)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_proof: e.target.files[0] })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 dark:file:bg-green-900/20 dark:file:text-green-400"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Upload a screenshot or PDF of your payment confirmation (Max 5MB)
+                </p>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={paymentFormData.notes}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, notes: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white resize-none"
+                  placeholder="Any additional information about this payment..."
+                />
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  type="submit"
+                  disabled={isSubmittingPayment}
+                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center"
+                >
+                  {isSubmittingPayment ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      Submit Payment
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  disabled={isSubmittingPayment}
+                  className="px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 };
