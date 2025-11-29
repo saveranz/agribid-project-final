@@ -121,12 +121,39 @@ class OrderController extends Controller
             // Get the listing and calculate pricing
             $listing = Listing::findOrFail($validated['listing_id']);
             
-            // Check if enough stock is available
-            if ($listing->quantity < $validated['quantity']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient stock available',
-                ], 400);
+            // Check if listing uses stock batch management
+            $usesBatchManagement = $listing->stockBatches()->exists();
+            
+            if ($usesBatchManagement) {
+                // For batch-managed listings, check total available quantity across all batches
+                $availableQuantity = $listing->total_available_quantity;
+                
+                if ($availableQuantity < $validated['quantity']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient stock available',
+                    ], 400);
+                }
+                
+                // Deduct stock using FIFO method
+                if (!$listing->deductStock($validated['quantity'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to deduct stock from batches',
+                    ], 500);
+                }
+            } else {
+                // For non-batch listings, check main quantity
+                if ($listing->quantity < $validated['quantity']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient stock available',
+                    ], 400);
+                }
+                
+                // Update listing quantity directly
+                $listing->quantity -= $validated['quantity'];
+                $listing->save();
             }
 
             // Use pricing calculated by frontend (includes tiered pricing logic)
@@ -167,9 +194,7 @@ class OrderController extends Controller
                 'voucher_code' => $validated['voucher_code'] ?? null,
             ]);
 
-            // Update listing quantity
-            $listing->quantity -= $validated['quantity'];
-            $listing->save();
+            // Note: Stock already deducted above based on batch management type
 
             // Create notifications for both buyer and seller
             Notification::create([

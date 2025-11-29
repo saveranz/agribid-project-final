@@ -15,6 +15,19 @@ class ListingController extends Controller
 
     public function index(Request $request)
     {
+        // Cache key based on request parameters
+        $cacheKey = 'listings_' . md5(json_encode($request->all()) . auth()->id());
+        
+        // Return cached response if available (cache for 1 minute)
+        $cachedResponse = cache()->remember($cacheKey, 60, function () use ($request) {
+            return $this->fetchListings($request);
+        });
+        
+        return $this->okResponse($cachedResponse['listings'], $cachedResponse['message']);
+    }
+    
+    protected function fetchListings(Request $request)
+    {
         // Optimized query with eager loading and selective fields
         $query = Listing::select([
             'id', 'user_id', 'category_id', 'name', 'type', 'listing_type', 
@@ -79,7 +92,10 @@ class ListingController extends Controller
             return $listing;
         });
 
-        return $this->ok('Listings retrieved successfully', $listings);
+        return [
+            'listings' => $listings,
+            'message' => 'Listings retrieved successfully'
+        ];
     }
 
     public function show($id)

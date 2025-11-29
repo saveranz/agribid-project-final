@@ -38,7 +38,7 @@ const FarmerDashboard = () => {
   const [farmerName, setFarmerName] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
-  const [activeTab, setActiveTab] = useState("produce"); // produce, equipment, sales, revenue, archived
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, produce, equipment, sales, revenue, archived
   const [produceFilter, setProduceFilter] = useState("auction"); // auction, direct_buy
   const [orderFilter, setOrderFilter] = useState("to_pay"); // to_pay, to_confirm, to_ship, in_transit, to_receive, completed
   const [orderTab, setOrderTab] = useState("to_ship"); // to_ship, to_deliver
@@ -77,6 +77,7 @@ const FarmerDashboard = () => {
   const [selectedBuyer, setSelectedBuyer] = useState(null);
   const [selectedOrderForFeedback, setSelectedOrderForFeedback] = useState(null);
   const [submittedFeedbackOrders, setSubmittedFeedbackOrders] = useState(new Set());
+  const [feedbackHistory, setFeedbackHistory] = useState([]);
   const [feedbackFormData, setFeedbackFormData] = useState({
     rating: 5,
     payment_speed_rating: 5,
@@ -221,6 +222,24 @@ const FarmerDashboard = () => {
   };
 
   // Buyer Feedback Functions
+  const fetchFeedbackHistory = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8000/api/v1/buyer-feedback/my-feedback', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setFeedbackHistory(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching feedback history:', error);
+    }
+  };
+
   const fetchEligibleBuyers = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -283,6 +302,9 @@ const FarmerDashboard = () => {
         setNotifications(updatedNotifications);
         localStorage.setItem('farmer_notifications', JSON.stringify(updatedNotifications));
 
+        // Refresh feedback history
+        await fetchFeedbackHistory();
+
         // Reset form
         setShowFeedbackModal(false);
         setSelectedBuyer(null);
@@ -327,6 +349,7 @@ const FarmerDashboard = () => {
     fetchListings();
     fetchCategories();
     fetchSellerOrders();
+    fetchFeedbackHistory();
   }, []);
 
   // Fetch archived listings when archived tab is active
@@ -395,7 +418,7 @@ const FarmerDashboard = () => {
       fetchListings();
     } catch (error) {
       console.error('Error restoring listing:', error);
-      addNotification('Error restoring product', 'error');
+      // Don't add error notification - just log to console
     }
   };
 
@@ -444,6 +467,11 @@ const FarmerDashboard = () => {
   };
 
   const addNotification = (message, type = 'info') => {
+    // Only add success notifications - no errors
+    if (type === 'error' || type === 'expiration') {
+      return;
+    }
+    
     const newNotification = {
       id: Date.now(),
       message,
@@ -537,7 +565,8 @@ const FarmerDashboard = () => {
       console.error('Error response:', error.response?.data);
       console.error('Form data listing_type:', formData.listing_type);
       console.error('FormPayload keys sent:', Array.from(formPayload.keys()));
-      addNotification(error.response?.data?.message || 'Error posting product', 'expiration');
+      // Don't add error notification - just show alert
+      alert(error.response?.data?.message || 'Error posting product');
     } finally {
       setLoading(false);
     }
@@ -576,7 +605,8 @@ const FarmerDashboard = () => {
       addNotification('Product updated successfully!', 'sale');
     } catch (error) {
       console.error('Error updating product:', error);
-      addNotification(error.response?.data?.message || 'Error updating product', 'expiration');
+      // Don't add error notification - just show alert
+      alert(error.response?.data?.message || 'Error updating product');
     } finally {
       setLoading(false);
     }
@@ -776,7 +806,8 @@ const FarmerDashboard = () => {
       addNotification('Listing deleted successfully', 'sale');
     } catch (error) {
       console.error('Error deleting listing:', error);
-      addNotification(error.response?.data?.message || 'Error deleting listing', 'expiration');
+      // Don't add error notification - just show alert
+      alert(error.response?.data?.message || 'Error deleting listing');
     }
   };
 
@@ -841,11 +872,12 @@ const FarmerDashboard = () => {
         await fetchSellerOrders();
         addNotification('Order confirmed successfully!', 'success');
       } else {
-        addNotification(data.message || 'Failed to confirm order', 'error');
+        console.error('Failed to confirm order:', data.message);
+        alert(data.message || 'Failed to confirm order');
       }
     } catch (error) {
       console.error('Error confirming order:', error);
-      addNotification('Error confirming order', 'error');
+      alert('Error confirming order');
     }
   };
 
@@ -868,11 +900,12 @@ const FarmerDashboard = () => {
         await fetchSellerOrders();
         addNotification('Order marked as shipped!', 'success');
       } else {
-        addNotification(data.message || 'Failed to mark order as shipped', 'error');
+        console.error('Failed to mark order as shipped:', data.message);
+        alert(data.message || 'Failed to mark order as shipped');
       }
     } catch (error) {
       console.error('Error marking order as shipped:', error);
-      addNotification('Error updating order status', 'error');
+      alert('Error updating order status');
     }
   };
 
@@ -987,28 +1020,31 @@ const FarmerDashboard = () => {
 
         {/* Navigation Menu */}
         <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">
-          <NavLink
-            to="/farmer-dashboard"
-            className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium"
+          <button
+            onClick={() => setActiveTab("dashboard")}
+            className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium w-full text-left cursor-pointer"
           >
             <TrendingUp className="w-5 h-5" />
             <span>Dashboard</span>
-          </NavLink>
+          </button>
           
           <div className="pt-2">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide px-4 mb-2">
               Manage Listings
             </p>
-            <NavLink
-              to="/post-produce"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium"
+            <button
+              onClick={() => {
+                console.log('Post New Produce clicked');
+                setActiveTab("produce");
+              }}
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium w-full text-left cursor-pointer"
             >
               <Plus className="w-5 h-5" />
               <div>
                 <span className="block">Post New Produce</span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">List crops for bidding</span>
               </div>
-            </NavLink>
+            </button>
             <NavLink
               to="/rental-equipment"
               className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium"
@@ -1120,7 +1156,8 @@ const FarmerDashboard = () => {
                 </div>
               )}
             </div>
-        {/* Summary Cards */}
+        {/* Summary Cards - Only show on dashboard */}
+        {activeTab === "dashboard" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {/* Active Produce Listings */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 hover:shadow-lg transition-shadow">
@@ -1209,27 +1246,233 @@ const FarmerDashboard = () => {
 
 
         </div>
+        )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-4 mb-6">
-          <button
-            onClick={() => setShowPostModal(true)}
-            className="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:shadow-lg text-base"
-          >
-            <Plus className="w-4 h-4 mr-2 text-white" />
-            <span className="text-white">Post New Produce</span>
-          </button>
-          <NavLink
-            to="/rental-equipment"
-            className="inline-flex items-center bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:shadow-lg text-base"
-          >
-            <Plus className="w-4 h-4 mr-2 text-white" />
-            <span className="text-white">List Equipment for Rent</span>
-          </NavLink>
-        </div>
+        {/* Content Area */}
+        {activeTab === "dashboard" ? (
+          // Dashboard Overview - Charts and Analytics
+          <div className="space-y-6">
+            {/* Quick Actions Card */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h2>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                      <Package className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Active Listings</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Manage your produce and equipment</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("produce")}
+                    className="text-green-600 hover:text-green-700 font-medium"
+                  >
+                    View All →
+                  </button>
+                </div>
 
-        {/* Tabbed Content */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-8 flex-1 flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center">
+                      <ShoppingCart className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Pending Orders</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Orders waiting for action</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("orders")}
+                    className="text-orange-600 hover:text-orange-700 font-medium"
+                  >
+                    View All →
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
+                      <DollarSign className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Revenue & Payouts</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Track your earnings</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("revenue")}
+                    className="text-yellow-600 hover:text-yellow-700 font-medium"
+                  >
+                    View All →
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Listing Performance</h3>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Auction Listings</span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{producePosts.filter(p => p.listing_type === 'auction').length}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="bg-orange-600 h-2 rounded-full" style={{ width: `${(producePosts.filter(p => p.listing_type === 'auction').length / Math.max(producePosts.length, 1)) * 100}%` }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Direct Buy Listings</span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{producePosts.filter(p => p.listing_type === 'direct_buy').length}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="bg-green-600 h-2 rounded-full" style={{ width: `${(producePosts.filter(p => p.listing_type === 'direct_buy').length / Math.max(producePosts.length, 1)) * 100}%` }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Archived Products</span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{archivedPosts.length}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="bg-amber-600 h-2 rounded-full" style={{ width: `${(archivedPosts.length / Math.max((producePosts.length + archivedPosts.length), 1)) * 100}%` }}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Top Categories</h3>
+                <div className="space-y-3">
+                  {categories.slice(0, 5).map((category, index) => {
+                    const categoryCount = producePosts.filter(p => p.category_id === category.id).length;
+                    return (
+                      <div key={category.id} className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-2xl">{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '📦'}</span>
+                          <span className="text-sm text-gray-900 dark:text-white font-medium">{category.name}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">{categoryCount} listings</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Buyer Feedback */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Recent Buyer Feedback</h3>
+                <button
+                  onClick={handleLeaveFeedback}
+                  className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium flex items-center"
+                >
+                  <Award className="w-4 h-4 mr-1" />
+                  Leave Feedback
+                </button>
+              </div>
+              {feedbackHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {feedbackHistory.slice(0, 5).map((feedback) => (
+                    <div key={feedback.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <p className="font-semibold text-gray-900 dark:text-white">{feedback.buyer_name}</p>
+                            <div className="flex items-center space-x-1">
+                              {[...Array(5)].map((_, i) => (
+                                <span key={i} className={i < feedback.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}>
+                                  ⭐
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{feedback.comment}</p>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Payment Speed: </span>
+                              <span className="font-semibold text-gray-900 dark:text-white">{feedback.payment_speed_rating}/5</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Communication: </span>
+                              <span className="font-semibold text-gray-900 dark:text-white">{feedback.communication_rating}/5</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Reliability: </span>
+                              <span className="font-semibold text-gray-900 dark:text-white">{feedback.reliability_rating}/5</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          {feedback.would_transact_again ? (
+                            <span className="inline-flex items-center px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 rounded-full">
+                              ✓ Would transact again
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 rounded-full">
+                              ✗ Would not transact again
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Product: {feedback.listing_name} • {new Date(feedback.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Award className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-600 dark:text-gray-400">No feedback submitted yet</p>
+                  <button
+                    onClick={handleLeaveFeedback}
+                    className="mt-3 text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium text-sm"
+                  >
+                    Leave your first feedback
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Tips and Recommendations */}
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl shadow-md p-6">
+              <div className="flex items-start space-x-4">
+                <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">💡 Quick Tips</h3>
+                  <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    <li className="flex items-start">
+                      <span className="text-green-600 mr-2">•</span>
+                      <span>Keep your listings updated with fresh photos and accurate stock levels</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-green-600 mr-2">•</span>
+                      <span>Respond to buyers quickly to increase your reliability rating</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-green-600 mr-2">•</span>
+                      <span>Use competitive pricing to attract more bids on your auction items</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Tabbed Content for other views */
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-8 flex-1 flex flex-col overflow-hidden">
           {/* Tab Navigation */}
           <div className="flex border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <button
@@ -2127,6 +2370,7 @@ const FarmerDashboard = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Notifications Section */}
         </div>
