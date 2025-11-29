@@ -31,6 +31,7 @@ import {
 import { logout } from "../api/Auth";
 import { getMyListings, createListing, deleteListing, updateListing, getListingBidders, getArchivedListings, restoreListing } from "../api/Listing";
 import { getCategories } from "../api/Category";
+import { getPaymentStatus, submitPayment, getPaymentsByBid } from "../api/AuctionPayment";
 
 const FarmerDashboard = () => {
   const navigate = useNavigate();
@@ -126,6 +127,13 @@ const FarmerDashboard = () => {
     shelf_life_days: '',
     handling_instructions: ''
   });
+
+  // Auction Payment States
+  const [auctionSales, setAuctionSales] = useState([]);
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
+  const [selectedPaymentBid, setSelectedPaymentBid] = useState(null);
+  const [paymentDetails, setPaymentDetails] = useState(null);
 
   // Stock Batch Management Functions
   const handleManageStock = async (listing) => {
@@ -330,6 +338,84 @@ const FarmerDashboard = () => {
     }
   };
 
+  // Fetch auction sales with payment tracking
+  const fetchAuctionSales = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Fetch all listings
+      const listingsResponse = await getMyListings();
+      if (listingsResponse.data?.success) {
+        const allListings = listingsResponse.data.data.data || [];
+        
+        // Filter auction listings that have ended
+        const auctionListings = allListings.filter(listing => 
+          listing.listing_type === 'auction' && 
+          listing.auction_end &&
+          new Date(listing.auction_end) < new Date()
+        );
+        
+        // For each auction, fetch bids and payment status
+        const salesWithPayments = await Promise.all(
+          auctionListings.map(async (listing) => {
+            try {
+              // Fetch bidders for this listing
+              const biddersResponse = await getListingBidders(listing.id);
+              if (biddersResponse.data?.success) {
+                const bids = biddersResponse.data.data || [];
+                const winningBid = bids.find(bid => bid.is_winning);
+                
+                if (winningBid) {
+                  // Fetch payment status for winning bid
+                  try {
+                    const paymentResponse = await getPaymentStatus(winningBid.id);
+                    if (paymentResponse.success) {
+                      return {
+                        listing,
+                        bid: winningBid,
+                        paymentInfo: paymentResponse.data
+                      };
+                    }
+                  } catch (error) {
+                    console.log('No payment info yet for bid:', winningBid.id);
+                    return {
+                      listing,
+                      bid: winningBid,
+                      paymentInfo: null
+                    };
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching bid info for listing:', listing.id, error);
+            }
+            return null;
+          })
+        );
+        
+        // Filter out nulls and set state
+        const validSales = salesWithPayments.filter(sale => sale !== null);
+        setAuctionSales(validSales);
+        console.log('Auction sales with payment info:', validSales);
+      }
+      
+      // Fetch pending payment verifications
+      const paymentsResponse = await fetch('http://localhost:8000/api/v1/auction-payments/seller?status=pending', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      const paymentsData = await paymentsResponse.json();
+      if (paymentsData.success) {
+        setPendingPayments(paymentsData.data.payments.data || []);
+        console.log('Pending payments:', paymentsData.data.payments.data);
+      }
+    } catch (error) {
+      console.error('Error fetching auction sales:', error);
+    }
+  };
+
   // Fetch listings and categories on mount
   useEffect(() => {
     // Get user data from localStorage
@@ -350,6 +436,7 @@ const FarmerDashboard = () => {
     fetchCategories();
     fetchSellerOrders();
     fetchFeedbackHistory();
+    fetchAuctionSales();
   }, []);
 
   // Fetch archived listings when archived tab is active
@@ -1930,6 +2017,169 @@ const FarmerDashboard = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Auction Sales with Payment Tracking */}
+                {auctionSales.length > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6 mt-8">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                          <TrendingUp className="w-6 h-6 mr-2 text-green-600" />
+                          Auction Sales & Payments
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          Track payment status for won auctions
+                        </p>
+                      </div>
+                      {pendingPayments.length > 0 && (
+                        <span className="px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded-full text-sm font-semibold">
+                          {pendingPayments.length} Pending Verification{pendingPayments.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {auctionSales.map((sale) => (
+                        <div
+                          key={sale.listing.id}
+                          className="bg-white dark:bg-gray-800 rounded-lg p-5 border-2 border-gray-200 dark:border-gray-700 hover:border-green-400 dark:hover:border-green-600 transition-all"
+                        >
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center space-x-4">
+                              <img
+                                src={sale.listing.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop'}
+                                alt={sale.listing.name}
+                                className="w-16 h-16 object-cover rounded-lg"
+                              />
+                              <div>
+                                <h4 className="font-bold text-lg text-gray-900 dark:text-white">
+                                  {sale.listing.name}
+                                </h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Buyer: {sale.bid.buyer?.name || 'Unknown'}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-500">
+                                  Auction ended: {new Date(sale.listing.auction_end).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {sale.paymentInfo && (
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                sale.paymentInfo.payment_summary.payment_status === 'paid'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                  : sale.paymentInfo.payment_summary.payment_status === 'partial'
+                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                  : sale.paymentInfo.payment_summary.is_overdue
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }`}>
+                                {sale.paymentInfo.payment_summary.is_overdue 
+                                  ? 'OVERDUE' 
+                                  : sale.paymentInfo.payment_summary.payment_status.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {sale.paymentInfo ? (
+                            <div className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/10 dark:to-blue-900/10 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                              <div className="grid grid-cols-4 gap-4 mb-3">
+                                <div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400">Winning Bid</p>
+                                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                    ₱{sale.paymentInfo.payment_summary.winning_bid_amount?.toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400">Total Received</p>
+                                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                    ₱{sale.paymentInfo.payment_summary.total_paid?.toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400">Pending Balance</p>
+                                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                    ₱{sale.paymentInfo.payment_summary.remaining_balance?.toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400">Payment Deadline</p>
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    {sale.paymentInfo.payment_summary.payment_deadline 
+                                      ? new Date(sale.paymentInfo.payment_summary.payment_deadline).toLocaleDateString()
+                                      : 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {/* Payment History */}
+                              {sale.paymentInfo.payment_history?.length > 0 && (
+                                <div className="border-t border-green-200 dark:border-green-700 pt-3">
+                                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Payment History:
+                                  </p>
+                                  <div className="space-y-1">
+                                    {sale.paymentInfo.payment_history.map((payment, idx) => (
+                                      <div key={idx} className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-600 dark:text-gray-400">
+                                          ₱{payment.amount?.toLocaleString()} • {payment.payment_method} • {
+                                            new Date(payment.payment_date).toLocaleDateString()
+                                          }
+                                        </span>
+                                        <span className="text-green-600 dark:text-green-400 font-semibold">
+                                          ✓ Verified
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Pending Payments for Verification */}
+                              {sale.paymentInfo.pending_payments?.length > 0 && (
+                                <div className="border-t border-yellow-200 dark:border-yellow-700 pt-3 mt-3 bg-yellow-50 dark:bg-yellow-900/10 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
+                                  <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-400 mb-2 flex items-center">
+                                    <AlertCircle className="w-4 h-4 mr-1" />
+                                    Awaiting Your Verification:
+                                  </p>
+                                  <div className="space-y-2">
+                                    {sale.paymentInfo.pending_payments.map((payment, idx) => (
+                                      <div key={idx} className="flex justify-between items-center text-xs bg-white dark:bg-gray-800 p-2 rounded">
+                                        <span className="text-gray-700 dark:text-gray-300">
+                                          ₱{payment.amount?.toLocaleString()} • {payment.payment_method} • {
+                                            new Date(payment.payment_date).toLocaleDateString()
+                                          }
+                                        </span>
+                                        <button
+                                          onClick={async () => {
+                                            setSelectedPaymentBid(sale.bid);
+                                            const details = await getPaymentsByBid(sale.bid.id);
+                                            setPaymentDetails(details.data);
+                                            setShowPaymentDetailsModal(true);
+                                          }}
+                                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold transition-colors"
+                                        >
+                                          Review & Verify
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="bg-yellow-50 dark:bg-yellow-900/10 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                              <p className="text-sm text-yellow-800 dark:text-yellow-400 flex items-center">
+                                <Clock className="w-4 h-4 mr-2" />
+                                Payment tracking not initialized yet. Please finalize this auction to set up payment terms.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
