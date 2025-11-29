@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\StockBatchController;
 use App\Http\Controllers\Api\V1\BuyerFeedbackController;
 use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\AuctionPaymentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -56,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Bidding
     Route::apiResource('bids', BidController::class);
     Route::get('/listings/{id}/bidders', [BidController::class, 'getBidders']);
+    Route::post('/listings/{listingId}/finalize-auction', [BidController::class, 'finalizeAuction']);
 
     // Equipment Rentals
     Route::apiResource('equipment', EquipmentController::class);
@@ -97,6 +99,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders', [OrderController::class, 'store']);
     Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
     Route::post('/orders/{id}/cancel', [OrderController::class, 'cancel']);
+
+    // Auction Payments
+    Route::post('/auction-payments', [AuctionPaymentController::class, 'store']); // Submit payment
+    Route::get('/auction-payments/bid/{bidId}', [AuctionPaymentController::class, 'getByBid']); // Get payments for a bid
+    Route::get('/auction-payments/buyer', [AuctionPaymentController::class, 'getBuyerPayments']); // Buyer's payment history
+    Route::get('/auction-payments/seller', [AuctionPaymentController::class, 'getSellerPayments']); // Seller's received payments
+    Route::get('/auction-payments/{id}', [AuctionPaymentController::class, 'show']); // Single payment details
+    Route::put('/auction-payments/{id}/verify', [AuctionPaymentController::class, 'verify']); // Verify/reject payment
+    Route::get('/bids/{bidId}/payment-status', [AuctionPaymentController::class, 'getPaymentStatus']); // Payment transparency card data
 });
 
 //Public Routes

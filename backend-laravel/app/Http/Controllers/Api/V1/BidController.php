@@ -7,6 +7,7 @@ use App\Models\Bid;
 use App\Models\Listing;
 use App\Traits\ApiResponses;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -153,4 +154,74 @@ class BidController extends Controller
     public function show(string $id) {}
     public function update(Request $request, string $id) {}
     public function destroy(string $id) {}
+
+    /**
+     * Finalize auction and initialize payment tracking for winning bid
+     * This should be called when auction ends
+     */
+    public function finalizeAuction($listingId)
+    {
+        $listing = Listing::with('bids')->findOrFail($listingId);
+
+        // Only the seller can finalize their auction
+        if ($listing->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+            return $this->error('Unauthorized', 'Only the seller can finalize this auction', 403);
+        }
+
+        // Check if auction has ended
+        if ($listing->auction_end && !$listing->auction_end->isPast()) {
+            return $this->error('Auction not ended', 'Auction is still active', 400);
+        }
+
+        // Get the winning bid
+        $winningBid = $listing->bids()
+            ->where('is_winning', true)
+            ->orderBy('bid_amount', 'desc')
+            ->first();
+
+        if (!$winningBid) {
+            return $this->error('No bids', 'This auction has no bids', 400);
+        }
+
+        // Check if already finalized
+        if ($winningBid->payment_status !== null) {
+            return $this->error('Already finalized', 'This auction has already been finalized', 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Calculate minimum downpayment (20% of winning bid)
+            $minimumDownpayment = $winningBid->bid_amount * 0.20;
+
+            // Initialize payment tracking
+            $winningBid->update([
+                'winning_bid_amount' => $winningBid->bid_amount,
+                'total_paid' => 0,
+                'remaining_balance' => $winningBid->bid_amount,
+                'minimum_downpayment' => $minimumDownpayment,
+                'payment_status' => 'unpaid',
+                'payment_deadline' => now()->addDays(3), // 3 days to pay
+                'fulfillment_status' => 'pending',
+            ]);
+
+            // Update listing status to sold/completed
+            $listing->update([
+                'status' => 'sold',
+            ]);
+
+            // Notify the winning buyer
+            $winningBid->buyer->notify(new \App\Notifications\AuctionWon($winningBid));
+
+            DB::commit();
+
+            return $this->success([
+                'bid' => $winningBid->fresh(),
+                'message' => 'Auction finalized successfully. Buyer has been notified.'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->error('Finalization failed', $e->getMessage(), 500);
+        }
+    }
 }

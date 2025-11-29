@@ -108,4 +108,12 @@ class User extends Authenticatable
                 : 0,
         ];
     }
+
+    /**
+     * Check if user has a specific role
+     */
+    public function hasRole($role)
+    {
+        return $this->role === $role;
+    }
 }
