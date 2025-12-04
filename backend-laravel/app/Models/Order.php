@@ -26,6 +26,8 @@ class Order extends Model
         'delivery_province',
         'delivery_postal_code',
         'payment_method',
+        'delivery_method',
+        'pickup_notes',
         'shipping_option',
         'estimated_delivery_start',
         'estimated_delivery_end',

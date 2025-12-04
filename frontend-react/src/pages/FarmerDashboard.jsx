@@ -31,7 +31,7 @@ import {
 import { logout } from "../api/Auth";
 import { getMyListings, createListing, deleteListing, updateListing, getListingBidders, getArchivedListings, restoreListing } from "../api/Listing";
 import { getCategories } from "../api/Category";
-import { getPaymentStatus, submitPayment, getPaymentsByBid } from "../api/AuctionPayment";
+import { getMyEquipment, createEquipment, updateEquipment, deleteEquipment } from "../api/Equipment";
 
 const FarmerDashboard = () => {
   const navigate = useNavigate();
@@ -41,14 +41,28 @@ const FarmerDashboard = () => {
   const [selectedPost, setSelectedPost] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, produce, equipment, sales, revenue, archived
   const [produceFilter, setProduceFilter] = useState("auction"); // auction, direct_buy
-  const [orderFilter, setOrderFilter] = useState("to_pay"); // to_pay, to_confirm, to_ship, in_transit, to_receive, completed
-  const [orderTab, setOrderTab] = useState("to_ship"); // to_ship, to_deliver
+  const [categoryFilter, setCategoryFilter] = useState(null); // null means show all categories
+  const [orderFilter, setOrderFilter] = useState("to_pay"); // to_pay, to_ship, in_transit, to_receive, completed, for_pickup
+  const [orderTab, setOrderTab] = useState("to_ship"); // to_ship, to_deliver, for_pickup
   const [activeEditTab, setActiveEditTab] = useState('basic'); // basic, details, pricing, farm
   const [sellerOrders, setSellerOrders] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showBiddersModal, setShowBiddersModal] = useState(false);
   const [selectedBidders, setSelectedBidders] = useState(null);
   const [showPostModal, setShowPostModal] = useState(false);
+  const [winningBids, setWinningBids] = useState([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedBidForPayment, setSelectedBidForPayment] = useState(null);
+  const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
+  const [selectedBidForHistory, setSelectedBidForHistory] = useState(null);
+  const [paymentFormData, setPaymentFormData] = useState({
+    payment_type: 'full', // full, downpayment, balance
+    amount: '',
+    payment_method: 'cash',
+    confirmation_id: '',
+    notes: '',
+    payment_deadline: ''
+  });
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [activeFormTab, setActiveFormTab] = useState('basic');
@@ -87,6 +101,23 @@ const FarmerDashboard = () => {
     comment: '',
     would_transact_again: true
   });
+  
+  // Equipment Management States
+  const [myEquipment, setMyEquipment] = useState([]);
+  const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
+  const [showEditEquipmentModal, setShowEditEquipmentModal] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState(null);
+  const [equipmentImagePreview, setEquipmentImagePreview] = useState(null);
+  const [equipmentFormData, setEquipmentFormData] = useState({
+    name: '',
+    description: '',
+    type: 'Tractor',
+    rate_per_day: '',
+    location: '',
+    image_url: '',
+    image_file: null,
+  });
+  
   const [formData, setFormData] = useState({
     name: '',
     category_id: '',
@@ -127,13 +158,6 @@ const FarmerDashboard = () => {
     shelf_life_days: '',
     handling_instructions: ''
   });
-
-  // Auction Payment States
-  const [auctionSales, setAuctionSales] = useState([]);
-  const [pendingPayments, setPendingPayments] = useState([]);
-  const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
-  const [selectedPaymentBid, setSelectedPaymentBid] = useState(null);
-  const [paymentDetails, setPaymentDetails] = useState(null);
 
   // Stock Batch Management Functions
   const handleManageStock = async (listing) => {
@@ -338,84 +362,6 @@ const FarmerDashboard = () => {
     }
   };
 
-  // Fetch auction sales with payment tracking
-  const fetchAuctionSales = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      
-      // Fetch all listings
-      const listingsResponse = await getMyListings();
-      if (listingsResponse.data?.success) {
-        const allListings = listingsResponse.data.data.data || [];
-        
-        // Filter auction listings that have ended
-        const auctionListings = allListings.filter(listing => 
-          listing.listing_type === 'auction' && 
-          listing.auction_end &&
-          new Date(listing.auction_end) < new Date()
-        );
-        
-        // For each auction, fetch bids and payment status
-        const salesWithPayments = await Promise.all(
-          auctionListings.map(async (listing) => {
-            try {
-              // Fetch bidders for this listing
-              const biddersResponse = await getListingBidders(listing.id);
-              if (biddersResponse.data?.success) {
-                const bids = biddersResponse.data.data || [];
-                const winningBid = bids.find(bid => bid.is_winning);
-                
-                if (winningBid) {
-                  // Fetch payment status for winning bid
-                  try {
-                    const paymentResponse = await getPaymentStatus(winningBid.id);
-                    if (paymentResponse.success) {
-                      return {
-                        listing,
-                        bid: winningBid,
-                        paymentInfo: paymentResponse.data
-                      };
-                    }
-                  } catch (error) {
-                    console.log('No payment info yet for bid:', winningBid.id);
-                    return {
-                      listing,
-                      bid: winningBid,
-                      paymentInfo: null
-                    };
-                  }
-                }
-              }
-            } catch (error) {
-              console.error('Error fetching bid info for listing:', listing.id, error);
-            }
-            return null;
-          })
-        );
-        
-        // Filter out nulls and set state
-        const validSales = salesWithPayments.filter(sale => sale !== null);
-        setAuctionSales(validSales);
-        console.log('Auction sales with payment info:', validSales);
-      }
-      
-      // Fetch pending payment verifications
-      const paymentsResponse = await fetch('http://localhost:8000/api/v1/auction-payments/seller?status=pending', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      });
-      const paymentsData = await paymentsResponse.json();
-      if (paymentsData.success) {
-        setPendingPayments(paymentsData.data.payments.data || []);
-        console.log('Pending payments:', paymentsData.data.payments.data);
-      }
-    } catch (error) {
-      console.error('Error fetching auction sales:', error);
-    }
-  };
-
   // Fetch listings and categories on mount
   useEffect(() => {
     // Get user data from localStorage
@@ -432,54 +378,59 @@ const FarmerDashboard = () => {
       setFarmerName('Farmer');
     }
     
-    fetchListings();
-    fetchCategories();
-    fetchSellerOrders();
-    fetchFeedbackHistory();
-    fetchAuctionSales();
+    // Parallelize all initial API calls for faster loading
+    Promise.all([
+      fetchListings(),
+      fetchCategories(),
+      fetchSellerOrders(),
+      fetchFeedbackHistory(),
+      fetchEquipment()
+    ]).catch(error => console.error('Error loading dashboard data:', error));
   }, []);
 
   // Fetch archived listings when archived tab is active
   useEffect(() => {
     if (activeTab === 'archived') {
       fetchArchivedListings();
+    } else if (activeTab === 'auction_sales') {
+      fetchWinningBids();
+    } else if (activeTab === 'orders') {
+      // Only refetch orders when switching to orders tab
+      fetchSellerOrders();
+    } else if (activeTab === 'equipment') {
+      // Refetch equipment when switching to equipment tab
+      fetchEquipment();
     }
   }, [activeTab]);
-
-  // Refetch seller orders when location changes (e.g., buyer places order)
-  useEffect(() => {
-    const refetchOrders = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8000/api/v1/orders/seller', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
-        });
-        const data = await response.json();
-        if (data.status === 'success') {
-          setSellerOrders(data.data.orders || []);
-          console.log('Seller orders refetched:', data.data.orders);
-        }
-      } catch (error) {
-        console.error('Error refetching seller orders:', error);
-      }
-    };
-
-    // Refetch whenever we navigate to this page
-    refetchOrders();
-  }, [location.key]);
 
   const fetchListings = async () => {
     try {
       setLoading(true);
       const response = await getMyListings();
-      setProducePosts(response.data.data.data || []);
-      // Debug: log listings after fetch
-      console.log('Fetched listings:', response.data.data.data);
+      console.log('Full API response:', response);
+      console.log('Response data:', response.data);
+      
+      // Handle different response structures
+      let listings = [];
+      if (response.data?.data?.data) {
+        // Paginated response
+        listings = response.data.data.data;
+      } else if (response.data?.data) {
+        // Direct response or check if it's an array
+        listings = Array.isArray(response.data.data) ? response.data.data : response.data.data.data || [];
+      } else if (Array.isArray(response.data)) {
+        listings = response.data;
+      }
+      
+      console.log('Parsed listings:', listings);
+      console.log('Listings count:', listings.length);
+      console.log('Sample listing:', listings[0]);
+      console.log('Categories available:', listings.map(l => ({ id: l.id, name: l.name, category_id: l.category_id, category: l.category })));
+      setProducePosts(listings);
     } catch (error) {
       console.error('Error fetching listings:', error);
+      console.error('Error details:', error.response?.data);
+      setProducePosts([]);
     } finally {
       setLoading(false);
     }
@@ -492,6 +443,157 @@ const FarmerDashboard = () => {
       setArchivedPosts(response.data.data || []);
     } catch (error) {
       console.error('Error fetching archived listings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEquipment = async () => {
+    try {
+      setLoading(true);
+      const response = await getMyEquipment();
+      setMyEquipment(response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching equipment:', error);
+      setMyEquipment([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddEquipment = async (e) => {
+    e.preventDefault();
+    try {
+      // Prepare form data for file upload
+      const submitData = new FormData();
+      submitData.append('name', equipmentFormData.name);
+      submitData.append('description', equipmentFormData.description);
+      submitData.append('type', equipmentFormData.type);
+      submitData.append('rate_per_day', equipmentFormData.rate_per_day);
+      submitData.append('location', equipmentFormData.location);
+      
+      if (equipmentFormData.image_file) {
+        submitData.append('image', equipmentFormData.image_file);
+      } else if (equipmentFormData.image_url) {
+        submitData.append('image_url', equipmentFormData.image_url);
+      }
+
+      await createEquipment(submitData);
+      setShowAddEquipmentModal(false);
+      setEquipmentFormData({
+        name: '',
+        description: '',
+        type: 'Tractor',
+        rate_per_day: '',
+        location: '',
+        image_url: '',
+        image_file: null,
+      });
+      setEquipmentImagePreview(null);
+      fetchEquipment();
+      alert('Equipment added successfully!');
+    } catch (error) {
+      console.error('Error adding equipment:', error);
+      alert('Failed to add equipment. Please try again.');
+    }
+  };
+
+  const handleEditEquipment = async (e) => {
+    e.preventDefault();
+    try {
+      // Prepare form data for file upload
+      const submitData = new FormData();
+      submitData.append('name', equipmentFormData.name);
+      submitData.append('description', equipmentFormData.description);
+      submitData.append('type', equipmentFormData.type);
+      submitData.append('rate_per_day', equipmentFormData.rate_per_day);
+      submitData.append('location', equipmentFormData.location);
+      
+      if (equipmentFormData.image_file) {
+        submitData.append('image', equipmentFormData.image_file);
+      } else if (equipmentFormData.image_url) {
+        submitData.append('image_url', equipmentFormData.image_url);
+      }
+
+      await updateEquipment(editingEquipment.id, submitData);
+      setShowEditEquipmentModal(false);
+      setEditingEquipment(null);
+      setEquipmentFormData({
+        name: '',
+        description: '',
+        type: 'Tractor',
+        rate_per_day: '',
+        location: '',
+        image_url: '',
+        image_file: null,
+      });
+      setEquipmentImagePreview(null);
+      fetchEquipment();
+      alert('Equipment updated successfully!');
+    } catch (error) {
+      console.error('Error updating equipment:', error);
+      alert('Failed to update equipment. Please try again.');
+    }
+  };
+
+  const handleEquipmentImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setEquipmentFormData({...equipmentFormData, image_file: file, image_url: ''});
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEquipmentImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDeleteEquipment = async (equipmentId) => {
+    if (window.confirm('Are you sure you want to delete this equipment?')) {
+      try {
+        await deleteEquipment(equipmentId);
+        fetchEquipment();
+        alert('Equipment deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting equipment:', error);
+        alert('Failed to delete equipment. Please try again.');
+      }
+    }
+  };
+
+  const openEditEquipmentModal = (equipment) => {
+    setEditingEquipment(equipment);
+    setEquipmentFormData({
+      name: equipment.name,
+      description: equipment.description,
+      type: equipment.type,
+      rate_per_day: equipment.rate_per_day,
+      location: equipment.location,
+      image_url: equipment.image_url || '',
+      image_file: null,
+    });
+    setEquipmentImagePreview(equipment.image || null);
+    setShowEditEquipmentModal(true);
+  };
+
+  const fetchWinningBids = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8000/api/v1/bids/seller/winning', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setWinningBids(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching winning bids:', error);
     } finally {
       setLoading(false);
     }
@@ -521,8 +623,12 @@ const FarmerDashboard = () => {
       const data = await response.json();
       console.log('Seller orders response:', data);
       if (data.status === 'success') {
-        setSellerOrders(data.data.orders || []);
-        console.log('Seller orders set:', data.data.orders);
+        const orders = data.data.orders || [];
+        console.log('Seller orders set:', orders);
+        console.log('First order delivery_method:', orders[0]?.delivery_method);
+        console.log('First order pickup_notes:', orders[0]?.pickup_notes);
+        console.log('Pickup orders count:', orders.filter(o => o.delivery_method === 'pickup').length);
+        setSellerOrders(orders);
       }
     } catch (error) {
       console.error('Error fetching seller orders:', error);
@@ -795,49 +901,108 @@ const FarmerDashboard = () => {
     },
   ];
 
-  // Mock data for completed sales
-  const completedSales = [
-    {
-      id: 1,
-      name: "Tomatoes",
-      type: "Vegetable",
-      quantity: "200 kg",
-      soldPrice: "₱4,500",
-      buyer: "Anna Cruz",
-      soldDate: "Nov 10, 2025",
-      payoutStatus: "Paid",
-    },
-    {
-      id: 2,
-      name: "Corn Harvest",
-      type: "Grain",
-      quantity: "300 kg",
-      soldPrice: "₱8,000",
-      buyer: "Pedro Santos",
-      soldDate: "Nov 8, 2025",
-      payoutStatus: "Pending",
-    },
-    {
-      id: 3,
-      name: "Cabbage",
-      type: "Vegetable",
-      quantity: "150 kg",
-      soldPrice: "₱3,200",
-      buyer: "Maria Trader",
-      soldDate: "Nov 5, 2025",
-      payoutStatus: "Paid",
-    },
-  ];
+  // Combine seller orders and winning bids into recent transactions
+  const completedSales = React.useMemo(() => {
+    const transactions = [];
+    
+    // Add completed direct buy orders
+    sellerOrders
+      .filter(order => order.status === 'delivered' || order.status === 'completed')
+      .forEach(order => {
+        transactions.push({
+          id: `order-${order.id}`,
+          name: order.listing_name || order.product_name || 'Unknown Product',
+          type: 'Direct Buy',
+          quantity: `${order.quantity} ${order.unit || 'units'}`,
+          soldPrice: `₱${parseFloat(order.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}`,
+          buyer: order.buyer_name || 'Unknown Buyer',
+          soldDate: new Date(order.updated_at || order.created_at).toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          payoutStatus: order.payment_status === 'paid' ? 'Paid' : 'Pending',
+        });
+      });
+    
+    // Add paid auction winning bids
+    winningBids
+      .filter(bid => bid.payment_status === 'paid' || bid.fulfillment_status === 'completed')
+      .forEach(bid => {
+        transactions.push({
+          id: `bid-${bid.id}`,
+          name: bid.listing?.name || 'Unknown Product',
+          type: 'Auction',
+          quantity: `${bid.listing?.quantity || 0} ${bid.listing?.unit || 'units'}`,
+          soldPrice: `₱${parseFloat(bid.winning_bid_amount || bid.bid_amount || 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}`,
+          buyer: bid.buyer?.name || 'Unknown Buyer',
+          soldDate: new Date(bid.updated_at || bid.created_at).toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          payoutStatus: bid.payment_status === 'paid' ? 'Paid' : 'Pending',
+        });
+      });
+    
+    // Sort by date (most recent first)
+    transactions.sort((a, b) => new Date(b.soldDate) - new Date(a.soldDate));
+    
+    // Return latest 10 transactions
+    return transactions.slice(0, 10);
+  }, [sellerOrders, winningBids]);
 
-  // Mock data for stats
-  const stats = {
-    activeProduce: 3,
-    activeEquipment: 2,
-    expiringSoon: 1,
-    totalRevenue: "₱45,200",
-    pendingPayout: "₱8,000",
-    completedSales: 15,
-  };
+  // Calculate real stats from orders and bids
+  const stats = React.useMemo(() => {
+    // Calculate total revenue from completed transactions
+    let totalRevenue = 0;
+    let pendingPayout = 0;
+    let completedSalesCount = 0;
+    
+    // Add completed direct buy orders
+    sellerOrders.forEach(order => {
+      const amount = parseFloat(order.total_amount || 0);
+      if (order.status === 'delivered' || order.status === 'completed') {
+        totalRevenue += amount;
+        completedSalesCount++;
+        if (order.payment_status !== 'paid') {
+          pendingPayout += amount;
+        }
+      }
+    });
+    
+    // Add paid auction winning bids
+    winningBids.forEach(bid => {
+      const amount = parseFloat(bid.winning_bid_amount || bid.bid_amount || 0);
+      if (bid.payment_status === 'paid' || bid.fulfillment_status === 'completed') {
+        totalRevenue += amount;
+        completedSalesCount++;
+      }
+      // Add to pending if partial payment
+      if (bid.payment_status === 'partial') {
+        const remaining = parseFloat(bid.remaining_balance || 0);
+        pendingPayout += remaining;
+      }
+    });
+    
+    // Count expiring soon listings
+    const expiringSoonCount = producePosts.filter(p => {
+      if (!p.auction_end) return false;
+      const endDate = new Date(p.auction_end);
+      const now = new Date();
+      const hoursRemaining = (endDate - now) / (1000 * 60 * 60);
+      return hoursRemaining > 0 && hoursRemaining <= 24;
+    }).length;
+    
+    return {
+      activeProduce: producePosts.filter(p => p.status === 'active' || p.approval_status === 'approved').length,
+      activeEquipment: 0, // Equipment not tracked separately
+      expiringSoon: expiringSoonCount,
+      totalRevenue: `₱${totalRevenue.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+      pendingPayout: `₱${pendingPayout.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+      completedSales: completedSalesCount,
+    };
+  }, [sellerOrders, winningBids, producePosts]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -996,6 +1161,39 @@ const FarmerDashboard = () => {
     }
   };
 
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8000/api/v1/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      const data = await response.json();
+      console.log('Status update response:', data);
+      if (data.success) {
+        await fetchSellerOrders();
+        const statusMessages = {
+          'processing': 'Order marked as preparing',
+          'shipped': 'Order marked as ready for pickup',
+          'delivered': 'Order marked as picked up'
+        };
+        addNotification(statusMessages[newStatus] || 'Order status updated successfully!', 'success');
+      } else {
+        console.error('Failed to update order status:', data.message);
+        alert(data.message || 'Failed to update order status');
+      }
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      alert('Error updating order status');
+    }
+  };
+
   const handleOpenFeedbackForOrder = (order) => {
     setSelectedOrderForFeedback(order);
     setFeedbackFormData({
@@ -1065,10 +1263,13 @@ const FarmerDashboard = () => {
   const getFilteredSellerOrders = () => {
     if (orderTab === 'to_ship') {
       return sellerOrders.filter(order => 
-        order.status === 'pending' || order.status === 'confirmed' || order.status === 'processing'
+        (order.status === 'pending' || order.status === 'confirmed' || order.status === 'processing') &&
+        order.delivery_method === 'deliver'
       );
     } else if (orderTab === 'to_deliver') {
-      return sellerOrders.filter(order => order.status === 'shipped');
+      return sellerOrders.filter(order => order.status === 'shipped' && order.delivery_method === 'deliver');
+    } else if (orderTab === 'for_pickup') {
+      return sellerOrders.filter(order => order.delivery_method === 'pickup');
     }
     return [];
   };
@@ -1438,15 +1639,28 @@ const FarmerDashboard = () => {
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Top Categories</h3>
                 <div className="space-y-3">
                   {categories.slice(0, 5).map((category, index) => {
-                    const categoryCount = producePosts.filter(p => p.category_id === category.id).length;
+                    // Convert both to numbers for comparison to handle string vs number mismatch
+                    const categoryCount = producePosts.filter(p => Number(p.category_id) === Number(category.id)).length;
+                    const isSelected = categoryFilter === category.id;
                     return (
-                      <div key={category.id} className="flex items-center justify-between">
+                      <button
+                        key={category.id}
+                        onClick={() => {
+                          setActiveTab('produce');
+                          setCategoryFilter(isSelected ? null : category.id);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
+                          isSelected 
+                            ? 'bg-green-100 dark:bg-green-900/30' 
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
                         <div className="flex items-center space-x-2">
                           <span className="text-2xl">{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '📦'}</span>
                           <span className="text-sm text-gray-900 dark:text-white font-medium">{category.name}</span>
                         </div>
                         <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">{categoryCount} listings</span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1597,6 +1811,18 @@ const FarmerDashboard = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab("auction_sales")}
+              className={`px-6 py-4 font-semibold transition-colors text-base ${
+                activeTab === "auction_sales"
+                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              <Award className="w-4 h-4 inline mr-2" />
+              Auction Sales
+            </button>
+
+            <button
               onClick={() => setActiveTab("revenue")}
               className={`px-6 py-4 font-semibold transition-colors text-base ${
                 activeTab === "revenue"
@@ -1625,8 +1851,20 @@ const FarmerDashboard = () => {
             {/* Produce Listings Tab */}
             {activeTab === "produce" && (
               <div>
+                {/* Header with Add Button */}
+                <div className="mb-6 flex items-center justify-between">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Products</h1>
+                  <button
+                    onClick={() => setShowPostModal(true)}
+                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2 shadow-lg"
+                  >
+                    <Package className="w-5 h-5" />
+                    <span>Add New Product</span>
+                  </button>
+                </div>
+
                 {/* Filter Buttons */}
-                <div className="mb-6 flex gap-3">
+                <div className="mb-6 flex gap-3 flex-wrap items-center">
                   <button
                     onClick={() => setProduceFilter("auction")}
                     className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -1647,6 +1885,22 @@ const FarmerDashboard = () => {
                   >
                     🛒 Direct Buy
                   </button>
+                  
+                  {/* Category Filter Indicator */}
+                  {categoryFilter && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg">
+                      <span className="text-sm font-medium">
+                        Category: {categories.find(c => c.id === categoryFilter)?.name || 'Unknown'}
+                      </span>
+                      <button
+                        onClick={() => setCategoryFilter(null)}
+                        className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-1 transition-colors"
+                        title="Clear category filter"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1689,17 +1943,23 @@ const FarmerDashboard = () => {
                           Loading your listings...
                         </td>
                       </tr>
-                    ) : producePosts.filter(post => 
-                        post.listing_type === produceFilter
-                      ).length === 0 ? (
+                    ) : producePosts.filter(post => {
+                        const matchesListingType = post.listing_type === produceFilter;
+                        const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
+                        return matchesListingType && matchesCategory;
+                      }).length === 0 ? (
                       <tr>
                         <td colSpan="9" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                          No {produceFilter === "auction" ? "auction" : "direct buy"} listings yet. Click "Post New Produce" to get started!
+                          No {produceFilter === "auction" ? "auction" : "direct buy"} listings found{categoryFilter ? ' in this category' : ''}. {!categoryFilter && "Click \"Post New Produce\" to get started!"}
                         </td>
                       </tr>
                     ) : (
                       producePosts
-                        .filter(post => post.listing_type === produceFilter)
+                        .filter(post => {
+                          const matchesListingType = post.listing_type === produceFilter;
+                          const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
+                          return matchesListingType && matchesCategory;
+                        })
                         .map((post) => {
                         const expiresAt = new Date(post.auction_end);
                         const now = new Date();
@@ -1714,9 +1974,10 @@ const FarmerDashboard = () => {
                                 <div className="flex-shrink-0 h-12 w-12 mr-4">
                                   <img
                                     className="h-12 w-12 rounded-lg object-cover"
-                                    src={post.image_url && post.image_url.startsWith('http') ? post.image_url : (post.image_url ? `http://localhost:8000${post.image_url}` : 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop')}
+                                    src={post.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
                                     alt={post.name}
                                     onError={(e) => {
+                                      console.log('Image load error for:', post.name, 'URL:', post.image_url);
                                       e.target.onerror = null;
                                       e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
                                     }}
@@ -1838,103 +2099,282 @@ const FarmerDashboard = () => {
 
             {/* Equipment Rentals Tab */}
             {activeTab === "equipment" && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Equipment
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Rate
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Total Bookings
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Next Available
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {equipmentListings.map((equipment) => (
-                      <tr key={equipment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-12 w-12 mr-4">
-                              <img
-                                className="h-12 w-12 rounded-lg object-cover"
-                                src={equipment.image}
-                                alt={equipment.name}
-                              />
+              <div>
+                <div className="mb-6 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">My Equipment</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Manage your equipment available for rental
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddEquipmentModal(true)}
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <span>Add Equipment</span>
+                  </button>
+                </div>
+
+                {loading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+                  </div>
+                ) : myEquipment.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <Tractor className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">No equipment added yet</p>
+                    <button
+                      onClick={() => setShowAddEquipmentModal(true)}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      Add Your First Equipment
+                    </button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Equipment
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Rate/Day
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {myEquipment.map((equipment) => (
+                          <tr key={equipment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-12 w-12 mr-4">
+                                  <img
+                                    className="h-12 w-12 rounded-lg object-cover"
+                                    src={equipment.image}
+                                    alt={equipment.name}
+                                    onError={(e) => {
+                                      e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=300&h=200&fit=crop';
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {equipment.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                                    <MapPin className="w-3 h-3 mr-1" />
+                                    {equipment.location}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {equipment.type}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-purple-600 dark:text-purple-400">
+                              {equipment.rate}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                  equipment.availability_status === 'available' 
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                    : equipment.availability_status === 'rented'
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                                    : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                                }`}
+                              >
+                                {equipment.availability_status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => openEditEquipmentModal(equipment)}
+                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteEquipment(equipment.id)}
+                                  className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                  title="Delete"
+                                >
+                                  <Archive className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Auction Sales Tab */}
+            {activeTab === "auction_sales" && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    Auction Sales & Payment Tracking
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Manage winning bids and track buyer payments
+                  </p>
+                </div>
+
+                {/* Winning Bids List */}
+                <div className="space-y-4">
+                  {winningBids.length === 0 ? (
+                    <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
+                      <Award className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No winning bids yet</h3>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        Winning auction bids will appear here
+                      </p>
+                    </div>
+                  ) : (
+                    winningBids.map((bid) => (
+                      <div key={bid.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-blue-200 dark:border-blue-800">
+                        {/* Bid Header */}
+                        <div className="px-6 py-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4">
+                              <Award className="w-5 h-5 text-blue-600" />
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white">{bid.listing?.name || "Product"}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Buyer: <span className="font-medium">{bid.buyer?.name || "N/A"}</span>
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {equipment.name}
-                              </div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
-                                <MapPin className="w-3 h-3 mr-1" />
-                                {equipment.location}
-                              </div>
+                            <div className="flex items-center space-x-3">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                bid.payment_status === "paid" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
+                                bid.payment_status === "partial" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" :
+                                "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                              }`}>
+                                {bid.payment_status === "paid" ? "✅ Paid in Full" :
+                                 bid.payment_status === "partial" ? "⏳ Partially Paid" :
+                                 "❌ Unpaid"}
+                              </span>
                             </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {equipment.type}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-purple-600 dark:text-purple-400">
-                          {equipment.rate}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {equipment.bookings}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {equipment.nextAvailable}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-                              equipment.availability
-                            )}`}
-                          >
-                            {equipment.availability}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button
-                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                              title="Edit"
+                        </div>
+
+                        {/* Bid Details */}
+                        <div className="p-6">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                ₱{parseFloat(bid.winning_bid_amount || bid.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                              <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                ₱{parseFloat(bid.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining Balance</p>
+                              <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                ₱{parseFloat(bid.remaining_balance || (bid.winning_bid_amount || bid.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Payment Due Date</p>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {bid.payment_deadline ? new Date(bid.payment_deadline).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : "Not set"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Contact Info */}
+                          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              <span className="font-medium">Contact:</span> {bid.buyer?.email || "N/A"}
+                              {bid.buyer?.phone && <span className="ml-4">Phone: {bid.buyer.phone}</span>}
+                            </p>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-wrap gap-3">
+                            <button 
+                              onClick={() => {
+                                setSelectedBidForPayment(bid);
+                                setPaymentFormData({
+                                  ...paymentFormData,
+                                  payment_type: 'full',
+                                  amount: bid.remaining_balance || bid.winning_bid_amount || bid.bid_amount
+                                });
+                                setShowPaymentModal(true);
+                              }}
+                              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center"
                             >
-                              <Edit className="w-5 h-5" />
+                              <Banknote className="w-4 h-4 mr-2" />
+                              Record Payment
                             </button>
-                            <button
-                              className="text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300"
-                              title="Archive"
+                            <button 
+                              onClick={() => {
+                                setSelectedBidForHistory(bid);
+                                setShowPaymentHistoryModal(true);
+                              }}
+                              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                             >
-                              <Archive className="w-5 h-5" />
+                              View Payment History
                             </button>
-                            <button
-                              className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
-                              title="View Bookings"
-                            >
-                              <Eye className="w-5 h-5" />
+                            <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                              Contact Buyer
                             </button>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+                          {/* Recent Payments */}
+                          {bid.payments && bid.payments.length > 0 && (
+                            <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recent Payments:</p>
+                              <div className="space-y-2">
+                                {bid.payments.slice(0, 3).map((payment, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700/30 rounded p-2">
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                      {payment.payment_type === 'downpayment' ? '💰 Downpayment' : 
+                                       payment.payment_type === 'balance' ? '💵 Balance Payment' : 
+                                       '✅ Full Payment'}
+                                    </span>
+                                    <span className="font-medium text-gray-900 dark:text-white">
+                                      ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    </span>
+                                    <span className="text-gray-500 dark:text-gray-400">
+                                      {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
@@ -2017,169 +2457,6 @@ const FarmerDashboard = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* Auction Sales with Payment Tracking */}
-                {auctionSales.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6 mt-8">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                          <TrendingUp className="w-6 h-6 mr-2 text-green-600" />
-                          Auction Sales & Payments
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          Track payment status for won auctions
-                        </p>
-                      </div>
-                      {pendingPayments.length > 0 && (
-                        <span className="px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded-full text-sm font-semibold">
-                          {pendingPayments.length} Pending Verification{pendingPayments.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {auctionSales.map((sale) => (
-                        <div
-                          key={sale.listing.id}
-                          className="bg-white dark:bg-gray-800 rounded-lg p-5 border-2 border-gray-200 dark:border-gray-700 hover:border-green-400 dark:hover:border-green-600 transition-all"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center space-x-4">
-                              <img
-                                src={sale.listing.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop'}
-                                alt={sale.listing.name}
-                                className="w-16 h-16 object-cover rounded-lg"
-                              />
-                              <div>
-                                <h4 className="font-bold text-lg text-gray-900 dark:text-white">
-                                  {sale.listing.name}
-                                </h4>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                  Buyer: {sale.bid.buyer?.name || 'Unknown'}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-500">
-                                  Auction ended: {new Date(sale.listing.auction_end).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                            
-                            {sale.paymentInfo && (
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                sale.paymentInfo.payment_summary.payment_status === 'paid'
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                                  : sale.paymentInfo.payment_summary.payment_status === 'partial'
-                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                  : sale.paymentInfo.payment_summary.is_overdue
-                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                              }`}>
-                                {sale.paymentInfo.payment_summary.is_overdue 
-                                  ? 'OVERDUE' 
-                                  : sale.paymentInfo.payment_summary.payment_status.toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          
-                          {sale.paymentInfo ? (
-                            <div className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/10 dark:to-blue-900/10 rounded-lg p-4 border border-green-200 dark:border-green-700">
-                              <div className="grid grid-cols-4 gap-4 mb-3">
-                                <div>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">Winning Bid</p>
-                                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                                    ₱{sale.paymentInfo.payment_summary.winning_bid_amount?.toLocaleString()}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">Total Received</p>
-                                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                    ₱{sale.paymentInfo.payment_summary.total_paid?.toLocaleString()}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">Pending Balance</p>
-                                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                                    ₱{sale.paymentInfo.payment_summary.remaining_balance?.toLocaleString()}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400">Payment Deadline</p>
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                    {sale.paymentInfo.payment_summary.payment_deadline 
-                                      ? new Date(sale.paymentInfo.payment_summary.payment_deadline).toLocaleDateString()
-                                      : 'N/A'}
-                                  </p>
-                                </div>
-                              </div>
-                              
-                              {/* Payment History */}
-                              {sale.paymentInfo.payment_history?.length > 0 && (
-                                <div className="border-t border-green-200 dark:border-green-700 pt-3">
-                                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                    Payment History:
-                                  </p>
-                                  <div className="space-y-1">
-                                    {sale.paymentInfo.payment_history.map((payment, idx) => (
-                                      <div key={idx} className="flex justify-between items-center text-xs">
-                                        <span className="text-gray-600 dark:text-gray-400">
-                                          ₱{payment.amount?.toLocaleString()} • {payment.payment_method} • {
-                                            new Date(payment.payment_date).toLocaleDateString()
-                                          }
-                                        </span>
-                                        <span className="text-green-600 dark:text-green-400 font-semibold">
-                                          ✓ Verified
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* Pending Payments for Verification */}
-                              {sale.paymentInfo.pending_payments?.length > 0 && (
-                                <div className="border-t border-yellow-200 dark:border-yellow-700 pt-3 mt-3 bg-yellow-50 dark:bg-yellow-900/10 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
-                                  <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-400 mb-2 flex items-center">
-                                    <AlertCircle className="w-4 h-4 mr-1" />
-                                    Awaiting Your Verification:
-                                  </p>
-                                  <div className="space-y-2">
-                                    {sale.paymentInfo.pending_payments.map((payment, idx) => (
-                                      <div key={idx} className="flex justify-between items-center text-xs bg-white dark:bg-gray-800 p-2 rounded">
-                                        <span className="text-gray-700 dark:text-gray-300">
-                                          ₱{payment.amount?.toLocaleString()} • {payment.payment_method} • {
-                                            new Date(payment.payment_date).toLocaleDateString()
-                                          }
-                                        </span>
-                                        <button
-                                          onClick={async () => {
-                                            setSelectedPaymentBid(sale.bid);
-                                            const details = await getPaymentsByBid(sale.bid.id);
-                                            setPaymentDetails(details.data);
-                                            setShowPaymentDetailsModal(true);
-                                          }}
-                                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold transition-colors"
-                                        >
-                                          Review & Verify
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="bg-yellow-50 dark:bg-yellow-900/10 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
-                              <p className="text-sm text-yellow-800 dark:text-yellow-400 flex items-center">
-                                <Clock className="w-4 h-4 mr-2" />
-                                Payment tracking not initialized yet. Please finalize this auction to set up payment terms.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -2214,24 +2491,6 @@ const FarmerDashboard = () => {
                       </span>
                       <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {sellerOrders.filter(o => o.status === "pending").length}
-                      </span>
-                    </button>
-
-                    {/* To Confirm Status */}
-                    <button
-                      onClick={() => setOrderFilter("to_confirm")}
-                      className={`flex flex-col items-center p-4 rounded-lg transition-all ${
-                        orderFilter === "to_confirm"
-                          ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 shadow-md"
-                          : "bg-gray-50 dark:bg-gray-700 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-600"
-                      }`}
-                    >
-                      <ClipboardCheck className={`w-8 h-8 mb-2 ${orderFilter === "to_confirm" ? "text-blue-600" : "text-gray-400"}`} />
-                      <span className={`text-sm font-semibold ${orderFilter === "to_confirm" ? "text-blue-600" : "text-gray-600 dark:text-gray-300"}`}>
-                        To Confirm
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {sellerOrders.filter(o => o.status === "confirmed").length}
                       </span>
                     </button>
 
@@ -2315,7 +2574,6 @@ const FarmerDashboard = () => {
                     .filter(order => {
                       if (orderFilter === "all") return true;
                       if (orderFilter === "to_pay") return order.status === "pending";
-                      if (orderFilter === "to_confirm") return order.status === "confirmed";
                       if (orderFilter === "to_ship") return order.status === "processing" || order.status === "confirmed";
                       if (orderFilter === "in_transit") return order.status === "shipped";
                       if (orderFilter === "to_receive") return order.status === "shipped";
@@ -2340,6 +2598,12 @@ const FarmerDashboard = () => {
                               </div>
                             </div>
                             <div className="flex items-center space-x-3">
+                              {/* Delivery Method Badge */}
+                              {order.delivery_method === 'pickup' && (
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                  📦 FOR PICKUP
+                                </span>
+                              )}
                               {/* Status Badge */}
                               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                                 order.status === "pending" ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" :
@@ -2350,7 +2614,7 @@ const FarmerDashboard = () => {
                                 "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
                               }`}>
                                 {order.status === "pending" && "⏳ To Pay"}
-                                {order.status === "confirmed" && "📋 To Confirm"}
+                                {order.status === "confirmed" && "📦 To Ship"}
                                 {order.status === "processing" && "📦 To Ship"}
                                 {order.status === "shipped" && "🚚 In Transit"}
                                 {order.status === "delivered" && "✅ Completed"}
@@ -2368,11 +2632,13 @@ const FarmerDashboard = () => {
                             {/* Product Info */}
                             <div className="flex space-x-4 flex-1">
                               <img
-                                src={order.listing?.image_url 
-                                  ? (order.listing.image_url.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing.image_url}`)
-                                  : 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop'}
+                                src={order.listing?.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop'}
                                 alt={order.listing?.name}
                                 className="w-20 h-20 object-cover rounded-lg"
+                                onError={(e) => {
+                                  e.target.onerror = null;
+                                  e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop';
+                                }}
                               />
                               <div className="flex-1">
                                 <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
@@ -2408,6 +2674,19 @@ const FarmerDashboard = () => {
                                     {order.delivery_street_address}, {order.delivery_barangay}, 
                                     {order.delivery_city}, {order.delivery_province} {order.delivery_postal_code}
                                   </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pickup Notes */}
+                          {order.delivery_method === 'pickup' && order.pickup_notes && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                              <div className="flex items-start space-x-2">
+                                <Package className="w-4 h-4 text-indigo-600 mt-1 flex-shrink-0" />
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">Pickup Notes:</div>
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">{order.pickup_notes}</div>
                                 </div>
                               </div>
                             </div>
@@ -2481,7 +2760,6 @@ const FarmerDashboard = () => {
                   {sellerOrders.filter(order => {
                     if (orderFilter === "all") return true;
                     if (orderFilter === "to_pay") return order.status === "pending";
-                    if (orderFilter === "to_confirm") return order.status === "confirmed";
                     if (orderFilter === "to_ship") return order.status === "processing";
                     if (orderFilter === "in_transit") return order.status === "shipped";
                     if (orderFilter === "to_receive") return order.status === "shipped";
@@ -2496,6 +2774,185 @@ const FarmerDashboard = () => {
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* For Pickup Orders - Separate Section */}
+                <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                      <Package className="w-6 h-6 mr-2 text-indigo-600" />
+                      For Pickup Orders
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      Orders waiting for buyer pickup - no delivery required
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {sellerOrders.filter(order => order.delivery_method === "pickup").length === 0 ? (
+                      <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
+                        <Package className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No pickup orders</h3>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          You don't have any orders for pickup at the moment
+                        </p>
+                      </div>
+                    ) : (
+                      sellerOrders
+                        .filter(order => order.delivery_method === "pickup")
+                        .map(order => (
+                          <div key={order.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-indigo-200 dark:border-indigo-800">
+                            {/* Order Header */}
+                            <div className="px-6 py-4 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                  <Package className="w-5 h-5 text-indigo-600" />
+                                  <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">Order ID:</span>
+                                    <span className="ml-2 font-semibold text-gray-900 dark:text-white">#{order.id}</span>
+                                  </div>
+                                  <div className="h-4 w-px bg-indigo-300 dark:border-indigo-700"></div>
+                                  <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">Buyer:</span>
+                                    <span className="ml-2 font-medium text-gray-900 dark:text-white">{order.buyer?.name || "N/A"}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  {/* Pickup Badge */}
+                                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                    📦 FOR PICKUP
+                                  </span>
+                                  {/* Status Badge */}
+                                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                    order.status === "pending" ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" :
+                                    order.status === "confirmed" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" :
+                                    order.status === "processing" ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" :
+                                    order.status === "shipped" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" :
+                                    order.status === "delivered" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
+                                    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
+                                  }`}>
+                                    {order.status === "pending" && "⏳ To Pay"}
+                                    {order.status === "confirmed" && "📋 Ready"}
+                                    {order.status === "processing" && "📦 Preparing"}
+                                    {order.status === "shipped" && "✅ Ready for Pickup"}
+                                    {order.status === "delivered" && "✅ Picked Up"}
+                                  </span>
+                                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    {new Date(order.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Order Content */}
+                            <div className="px-6 py-4">
+                              <div className="flex items-start justify-between">
+                                {/* Product Info */}
+                                <div className="flex space-x-4 flex-1">
+                                  <img
+                                    src={order.listing?.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
+                                    alt={order.listing?.name || "Product"}
+                                    className="w-20 h-20 object-cover rounded-lg"
+                                    onError={(e) => {
+                                      e.target.onerror = null;
+                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                    }}
+                                  />
+                                  <div className="flex-1">
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                                      {order.listing?.name || "Product"}
+                                    </h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                      Quantity: {order.quantity} {order.unit}
+                                    </p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                      Price per {order.unit}: ₱{parseFloat(order.price_per_unit).toFixed(2)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Order Total */}
+                                <div className="text-right ml-6">
+                                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Order Total</div>
+                                  <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                                    ₱{parseFloat(order.total_amount).toFixed(2)}
+                                  </div>
+                                  <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                    No Shipping Fee
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Pickup Notes */}
+                              {order.pickup_notes && (
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                  <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4">
+                                    <div className="flex items-start space-x-2">
+                                      <Package className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                                      <div className="flex-1">
+                                        <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-1">Pickup Notes from Buyer:</div>
+                                        <div className="text-sm text-gray-700 dark:text-gray-300">{order.pickup_notes}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Buyer Contact Info */}
+                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center space-x-2">
+                                    <User className="w-4 h-4 text-gray-400" />
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                      Contact: {order.buyer?.email || order.delivery_phone || "N/A"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className="w-4 h-4 text-gray-400" />
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                      Ordered: {new Date(order.created_at).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Order Actions */}
+                            <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                              <div className="flex items-center justify-end space-x-3">
+                                {order.status === "confirmed" && (
+                                  <button 
+                                    onClick={() => handleStatusUpdate(order.id, "processing")}
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                                  >
+                                    Mark as Preparing
+                                  </button>
+                                )}
+                                {order.status === "processing" && (
+                                  <button 
+                                    onClick={() => handleStatusUpdate(order.id, "shipped")}
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                                  >
+                                    Mark as Ready for Pickup
+                                  </button>
+                                )}
+                                {order.status === "shipped" && (
+                                  <button 
+                                    onClick={() => handleStatusUpdate(order.id, "delivered")}
+                                    className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                                  >
+                                    Mark as Picked Up
+                                  </button>
+                                )}
+                                <button className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                  Contact Buyer
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -2559,8 +3016,12 @@ const FarmerDashboard = () => {
                                 <div className="flex-shrink-0 h-12 w-12 mr-4">
                                   <img
                                     className="h-12 w-12 rounded-lg object-cover opacity-60"
-                                    src={post.image_url && post.image_url.startsWith('http') ? post.image_url : (post.image_url ? `http://localhost:8000${post.image_url}` : 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop')}
+                                    src={post.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
                                     alt={post.name}
+                                    onError={(e) => {
+                                      e.target.onerror = null;
+                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                    }}
                                   />
                                 </div>
                                 <div>
@@ -4521,6 +4982,739 @@ const FarmerDashboard = () => {
                 </form>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Recording Modal */}
+      {showPaymentModal && selectedBidForPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Record Payment</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {selectedBidForPayment.listing?.name} - {selectedBidForPayment.buyer?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedBidForPayment(null);
+                  setPaymentFormData({
+                    payment_type: 'full',
+                    amount: '',
+                    payment_method: 'cash',
+                    confirmation_id: '',
+                    notes: '',
+                    payment_deadline: ''
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Payment Summary */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                      ₱{parseFloat(selectedBidForPayment.winning_bid_amount || selectedBidForPayment.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Paid So Far</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                      ₱{parseFloat(selectedBidForPayment.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining</p>
+                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                      ₱{parseFloat(selectedBidForPayment.remaining_balance || (selectedBidForPayment.winning_bid_amount || selectedBidForPayment.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <form className="space-y-4">
+                {/* Payment Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Payment Type
+                  </label>
+                  <select
+                    value={paymentFormData.payment_type}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      let amount = '';
+                      if (type === 'full') {
+                        amount = selectedBidForPayment.remaining_balance || selectedBidForPayment.winning_bid_amount || selectedBidForPayment.bid_amount;
+                      } else if (type === 'downpayment') {
+                        amount = selectedBidForPayment.minimum_downpayment || ((selectedBidForPayment.winning_bid_amount || selectedBidForPayment.bid_amount) * 0.3);
+                      }
+                      setPaymentFormData({...paymentFormData, payment_type: type, amount: amount});
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="full">Full Payment</option>
+                    <option value="downpayment">Downpayment</option>
+                    <option value="balance">Balance Payment</option>
+                  </select>
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Amount (₱)
+                  </label>
+                  <input
+                    type="number"
+                    value={paymentFormData.amount}
+                    onChange={(e) => setPaymentFormData({...paymentFormData, amount: e.target.value})}
+                    step="0.01"
+                    min="0"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="Enter payment amount"
+                  />
+                </div>
+
+                {/* Payment Method */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentFormData.payment_method}
+                    onChange={(e) => setPaymentFormData({...paymentFormData, payment_method: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="gcash">GCash</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="card">Card</option>
+                  </select>
+                </div>
+
+                {/* Confirmation ID */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Confirmation/Reference ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentFormData.confirmation_id}
+                    onChange={(e) => setPaymentFormData({...paymentFormData, confirmation_id: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="e.g., GCash Ref #123456789"
+                  />
+                </div>
+
+                {/* Payment Deadline (for partial payments) */}
+                {paymentFormData.payment_type !== 'full' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Next Payment Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentFormData.payment_deadline}
+                      onChange={(e) => setPaymentFormData({...paymentFormData, payment_deadline: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                )}
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={paymentFormData.notes}
+                    onChange={(e) => setPaymentFormData({...paymentFormData, notes: e.target.value})}
+                    rows="3"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="Any additional notes about this payment..."
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        // Validate amount
+                        if (!paymentFormData.amount || parseFloat(paymentFormData.amount) <= 0) {
+                          alert('Please enter a valid payment amount');
+                          return;
+                        }
+
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('http://localhost:8000/api/v1/auction-payments', {
+                          method: 'POST',
+                          headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                          },
+                          body: JSON.stringify({
+                            bid_id: selectedBidForPayment.id,
+                            amount: parseFloat(paymentFormData.amount),
+                            payment_type: paymentFormData.payment_type,
+                            payment_method: paymentFormData.payment_method,
+                            confirmation_id: paymentFormData.confirmation_id || null,
+                            notes: paymentFormData.notes || null,
+                            payment_deadline: paymentFormData.payment_deadline || null
+                          })
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                          alert('Payment recorded successfully!');
+                          setShowPaymentModal(false);
+                          setSelectedBidForPayment(null);
+                          
+                          // Reset form
+                          setPaymentFormData({
+                            payment_type: 'full',
+                            amount: '',
+                            payment_method: 'cash',
+                            confirmation_id: '',
+                            notes: '',
+                            payment_deadline: ''
+                          });
+
+                          // Refresh winning bids
+                          await fetchWinningBids();
+                        } else {
+                          alert('Failed to record payment: ' + (data.message || 'Unknown error'));
+                        }
+                      } catch (error) {
+                        console.error('Error recording payment:', error);
+                        alert('An error occurred while recording payment. Please try again.');
+                      }
+                    }}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                  >
+                    Record Payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPaymentModal(false);
+                      setSelectedBidForPayment(null);
+                    }}
+                    className="px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment History Modal */}
+      {showPaymentHistoryModal && selectedBidForHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Payment History</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {selectedBidForHistory.listing?.name} - {selectedBidForHistory.buyer?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPaymentHistoryModal(false);
+                  setSelectedBidForHistory(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Payment Summary */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 mb-6">
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Payment Summary</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">
+                      ₱{parseFloat(selectedBidForHistory.winning_bid_amount || selectedBidForHistory.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Downpayment</p>
+                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      ₱{parseFloat(selectedBidForHistory.downpayment_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                      ₱{parseFloat(selectedBidForHistory.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining</p>
+                    <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                      ₱{parseFloat(selectedBidForHistory.remaining_balance || (selectedBidForHistory.winning_bid_amount || selectedBidForHistory.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                </div>
+                {selectedBidForHistory.payment_deadline && (
+                  <div className="mt-4 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg p-3 flex items-center">
+                    <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-900 dark:text-yellow-300">Next Payment Due</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        {new Date(selectedBidForHistory.payment_deadline).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment History List */}
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Transaction History</h4>
+                {selectedBidForHistory.payments && selectedBidForHistory.payments.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedBidForHistory.payments.map((payment, idx) => (
+                      <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <span className="text-2xl">
+                                {payment.payment_type === 'downpayment' ? '💰' : 
+                                 payment.payment_type === 'balance' ? '💵' : 
+                                 '✅'}
+                              </span>
+                              <div>
+                                <p className="font-semibold text-gray-900 dark:text-white">
+                                  {payment.payment_type === 'downpayment' ? 'Downpayment' : 
+                                   payment.payment_type === 'balance' ? 'Balance Payment' : 
+                                   'Full Payment'}
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                  {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                              <div>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Amount</p>
+                                <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Payment Method</p>
+                                <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                                  {payment.payment_method.replace('_', ' ')}
+                                </p>
+                              </div>
+                            </div>
+                            {payment.confirmation_id && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Reference ID</p>
+                                <p className="text-sm font-mono text-gray-900 dark:text-white">{payment.confirmation_id}</p>
+                              </div>
+                            )}
+                            {payment.notes && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Notes</p>
+                                <p className="text-sm text-gray-700 dark:text-gray-300">{payment.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            payment.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                            payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                            'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          }`}>
+                            {payment.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <DollarSign className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No payment history</h3>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      No payments have been recorded for this auction yet
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowPaymentHistoryModal(false);
+                    setSelectedBidForHistory(null);
+                  }}
+                  className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Equipment Modal */}
+      {showAddEquipmentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                <Tractor className="w-6 h-6 mr-2 text-green-600" />
+                Add New Equipment
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddEquipmentModal(false);
+                  setEquipmentFormData({
+                    name: '',
+                    description: '',
+                    type: 'Tractor',
+                    rate_per_day: '',
+                    location: '',
+                    image_url: '',
+                    image_file: null,
+                  });
+                  setEquipmentImagePreview(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddEquipment} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Equipment Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={equipmentFormData.name}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, name: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="e.g., John Deere Tractor"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Description *
+                </label>
+                <textarea
+                  required
+                  value={equipmentFormData.description}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, description: e.target.value})}
+                  rows="3"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Describe your equipment..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Type *
+                  </label>
+                  <select
+                    required
+                    value={equipmentFormData.type}
+                    onChange={(e) => setEquipmentFormData({...equipmentFormData, type: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="Tractor">Tractor</option>
+                    <option value="Harvester">Harvester</option>
+                    <option value="Planter">Planter</option>
+                    <option value="Irrigation">Irrigation</option>
+                    <option value="Sprayer">Sprayer</option>
+                    <option value="Cultivator">Cultivator</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Rate per Day (₱) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={equipmentFormData.rate_per_day}
+                    onChange={(e) => setEquipmentFormData({...equipmentFormData, rate_per_day: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="3000"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Location *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={equipmentFormData.location}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, location: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Anilao, Oriental Mindoro"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Equipment Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEquipmentImageChange}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                />
+                {equipmentImagePreview && (
+                  <div className="mt-3">
+                    <img 
+                      src={equipmentImagePreview} 
+                      alt="Preview" 
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Upload an image of your equipment (JPG, PNG, max 5MB)
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddEquipmentModal(false);
+                    setEquipmentFormData({
+                      name: '',
+                      description: '',
+                      type: 'Tractor',
+                      rate_per_day: '',
+                      location: '',
+                      image_url: '',
+                      image_file: null,
+                    });
+                    setEquipmentImagePreview(null);
+                  }}
+                  className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Add Equipment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Equipment Modal */}
+      {showEditEquipmentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                <Edit className="w-6 h-6 mr-2 text-blue-600" />
+                Edit Equipment
+              </h3>
+              <button
+                onClick={() => {
+                  setShowEditEquipmentModal(false);
+                  setEditingEquipment(null);
+                  setEquipmentFormData({
+                    name: '',
+                    description: '',
+                    type: 'Tractor',
+                    rate_per_day: '',
+                    location: '',
+                    image_url: '',
+                    image_file: null,
+                  });
+                  setEquipmentImagePreview(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditEquipment} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Equipment Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={equipmentFormData.name}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, name: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Description *
+                </label>
+                <textarea
+                  required
+                  value={equipmentFormData.description}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, description: e.target.value})}
+                  rows="3"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Type *
+                  </label>
+                  <select
+                    required
+                    value={equipmentFormData.type}
+                    onChange={(e) => setEquipmentFormData({...equipmentFormData, type: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="Tractor">Tractor</option>
+                    <option value="Harvester">Harvester</option>
+                    <option value="Planter">Planter</option>
+                    <option value="Irrigation">Irrigation</option>
+                    <option value="Sprayer">Sprayer</option>
+                    <option value="Cultivator">Cultivator</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Rate per Day (₱) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={equipmentFormData.rate_per_day}
+                    onChange={(e) => setEquipmentFormData({...equipmentFormData, rate_per_day: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Location *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={equipmentFormData.location}
+                  onChange={(e) => setEquipmentFormData({...equipmentFormData, location: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Equipment Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEquipmentImageChange}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {equipmentImagePreview && (
+                  <div className="mt-3">
+                    <img 
+                      src={equipmentImagePreview} 
+                      alt="Preview" 
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Upload a new image to replace the current one
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditEquipmentModal(false);
+                    setEditingEquipment(null);
+                    setEquipmentFormData({
+                      name: '',
+                      description: '',
+                      type: 'Tractor',
+                      rate_per_day: '',
+                      location: '',
+                      image_url: '',
+                      image_file: null,
+                    });
+                    setEquipmentImagePreview(null);
+                  }}
+                  className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

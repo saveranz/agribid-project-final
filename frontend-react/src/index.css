@@ -48,6 +48,15 @@ button {
 button:hover {
   border-color: #16a34a;
 }
+
+/* Hide scrollbar for mobile navigation */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;

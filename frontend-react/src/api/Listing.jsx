@@ -2,7 +2,9 @@ import api from './axios';
 
 // Get all listings
 export const getListings = async (params = {}) => {
-    return api.get('/api/v1/listings', { params });
+    return api.get('/api/v1/listings', { 
+        params: { ...params, per_page: 200 } // Get all products
+    });
 };
 
 // Get single listing
@@ -17,12 +19,16 @@ export const getFlashDeals = async () => {
 
 // Get auction listings
 export const getAuctionListings = async (params = {}) => {
-    return api.get('/api/v1/auctions', { params });
+    return api.get('/api/v1/auctions', { 
+        params: { ...params, per_page: 200 } // Get all products
+    });
 };
 
 // Get direct buy listings
 export const getDirectBuyListings = async (params = {}) => {
-    return api.get('/api/v1/direct-buy', { params });
+    return api.get('/api/v1/direct-buy', { 
+        params: { ...params, per_page: 200 } // Get all products
+    });
 };
 
 // Search listings

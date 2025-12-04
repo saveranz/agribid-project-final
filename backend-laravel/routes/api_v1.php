@@ -11,7 +11,7 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\StockBatchController;
 use App\Http\Controllers\Api\V1\BuyerFeedbackController;
 use App\Http\Controllers\Api\V1\OrderController;
-use App\Http\Controllers\Api\V1\AuctionPaymentController;
+use App\Http\Controllers\Api\V1\AdminController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -57,12 +57,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Bidding
     Route::apiResource('bids', BidController::class);
     Route::get('/listings/{id}/bidders', [BidController::class, 'getBidders']);
-    Route::post('/listings/{listingId}/finalize-auction', [BidController::class, 'finalizeAuction']);
+    Route::get('/bids/seller/winning', [BidController::class, 'getSellerWinningBids']);
 
     // Equipment Rentals
+    Route::get('/my-equipment', [EquipmentController::class, 'myEquipment']);
+    Route::get('/my-rentals', [EquipmentController::class, 'myRentals']);
     Route::apiResource('equipment', EquipmentController::class);
     Route::post('/equipment/{id}/rent', [EquipmentController::class, 'rent']);
-    Route::get('/my-rentals', [EquipmentController::class, 'myRentals']);
 
     // Transactions / Orders
     Route::apiResource('transactions', TransactionController::class);
@@ -101,13 +102,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{id}/cancel', [OrderController::class, 'cancel']);
 
     // Auction Payments
-    Route::post('/auction-payments', [AuctionPaymentController::class, 'store']); // Submit payment
-    Route::get('/auction-payments/bid/{bidId}', [AuctionPaymentController::class, 'getByBid']); // Get payments for a bid
-    Route::get('/auction-payments/buyer', [AuctionPaymentController::class, 'getBuyerPayments']); // Buyer's payment history
-    Route::get('/auction-payments/seller', [AuctionPaymentController::class, 'getSellerPayments']); // Seller's received payments
-    Route::get('/auction-payments/{id}', [AuctionPaymentController::class, 'show']); // Single payment details
-    Route::put('/auction-payments/{id}/verify', [AuctionPaymentController::class, 'verify']); // Verify/reject payment
-    Route::get('/bids/{bidId}/payment-status', [AuctionPaymentController::class, 'getPaymentStatus']); // Payment transparency card data
+    Route::post('/auction-payments', [\App\Http\Controllers\Api\V1\AuctionPaymentController::class, 'recordPayment']);
+    Route::get('/auction-payments/bid/{bidId}', [\App\Http\Controllers\Api\V1\AuctionPaymentController::class, 'getPaymentHistory']);
+    Route::get('/auction-payments/seller', [\App\Http\Controllers\Api\V1\AuctionPaymentController::class, 'getSellerPayments']);
+    
+    // Admin Routes (restricted to admin role)
+    Route::middleware('role:admin')->prefix('admin')->group(function () {
+        Route::get('/users', [AdminController::class, 'getUsers']);
+        Route::get('/statistics', [AdminController::class, 'getStatistics']);
+        Route::post('/listings/{id}/approve', [AdminController::class, 'approveListing']);
+        Route::post('/listings/{id}/reject', [AdminController::class, 'rejectListing']);
+        Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
+        Route::delete('/listings/{id}', [AdminController::class, 'deleteListing']);
+        Route::get('/activity-logs', [AdminController::class, 'getActivityLogs']);
+        Route::get('/reports', [AdminController::class, 'generateReport']);
+    });
 });
 
 //Public Routes

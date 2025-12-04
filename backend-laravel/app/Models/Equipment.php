@@ -13,13 +13,12 @@ class Equipment extends Model
 
     protected $fillable = [
         'owner_id', 'name', 'description', 'type', 'rate_per_day', 'location',
-        'availability_status', 'next_available_date', 'total_bookings', 'rating', 'reviews_count', 'is_active'
+        'availability_status', 'specifications', 'image_url', 'is_active'
     ];
 
     protected $casts = [
         'rate_per_day' => 'decimal:2',
-        'next_available_date' => 'date',
-        'rating' => 'decimal:2',
+        'specifications' => 'array',
         'is_active' => 'boolean',
     ];
 

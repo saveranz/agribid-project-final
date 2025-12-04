@@ -19,20 +19,28 @@ class BidController extends Controller
     public function index(Request $request)
     {
         try {
-            Log::info('BidController index called', [
-                'user_id' => $request->user()?->id,
-                'user_email' => $request->user()?->email,
-            ]);
+            $userId = $request->user()->id;
+            $cacheKey = "bids_user_{$userId}";
             
-            $bids = Bid::with(['listing.user', 'listing.category'])
-                ->where('buyer_id', $request->user()->id)
-                ->whereHas('listing', function($q) {
-                    $q->active();
-                })
-                ->latest('bid_time')
-                ->get();
-
-            Log::info('Bids found', ['count' => $bids->count()]);
+            // Cache for 30 seconds
+            $bids = cache()->remember($cacheKey, 30, function () use ($request, $userId) {
+                return Bid::select('bids.*')
+                    ->with(['listing:id,name,user_id,current_bid,auction_end,image_url,listing_type,status,approval_status', 'listing.user:id,name', 'payments'])
+                    ->where('buyer_id', $userId)
+                    ->where(function($query) use ($userId) {
+                        // Include active listings
+                        $query->whereHas('listing', function($q) {
+                            $q->where('status', 'active')->where('approval_status', 'approved');
+                        })
+                        // OR include winning bids even if auction ended
+                        ->orWhere(function($q) use ($userId) {
+                            $q->where('buyer_id', $userId)
+                              ->where('is_winning', true);
+                        });
+                    })
+                    ->latest('bid_time')
+                    ->get();
+            });
 
             $bids->transform(function ($bid) {
                 $listing = $bid->listing;
@@ -57,14 +65,8 @@ class BidController extends Controller
             // Filter out any null values
             $bids = $bids->filter();
 
-            Log::info('Bids after transform', ['count' => $bids->count()]);
-
             return $this->ok('Active bids retrieved successfully', $bids->values());
         } catch (\Exception $e) {
-            Log::error('BidController index error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
             return $this->error('Failed to retrieve bids: ' . $e->getMessage(), 500);
         }
     }
@@ -105,20 +107,17 @@ class BidController extends Controller
             // Update listing current bid
             $listing->update(['current_bid' => $request->bid_amount]);
 
-            // Create notification for the buyer
-            \App\Models\Notification::create([
-                'user_id' => $request->user()->id,
-                'type' => 'bid_placed',
-                'message' => "Your bid of ₱" . number_format($request->bid_amount, 2) . " has been placed on {$listing->name}",
-                'is_read' => false,
-            ]);
-
             DB::commit();
             
-            // Load the bid with relationships for the response
-            $bid->load(['listing.user', 'listing.category']);
+            // Clear user's bid cache
+            cache()->forget("bids_user_{$request->user()->id}");
             
-            return $this->success('Bid placed successfully', $bid, 201);
+            return $this->success('Bid placed successfully', [
+                'id' => $bid->id,
+                'bid_amount' => $bid->bid_amount,
+                'listing_id' => $listing->id,
+                'is_winning' => true
+            ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->error('Failed to place bid: ' . $e->getMessage(), 500);
@@ -149,6 +148,26 @@ class BidController extends Controller
         });
 
         return $this->ok('Bidders retrieved successfully', $bidders);
+    }
+
+    // Get winning bids for seller's listings
+    public function getSellerWinningBids(Request $request)
+    {
+        try {
+            $sellerId = $request->user()->id;
+            
+            $winningBids = Bid::with(['listing:id,name,user_id', 'buyer:id,name,email,phone', 'payments'])
+                ->where('is_winning', true)
+                ->whereHas('listing', function($q) use ($sellerId) {
+                    $q->where('user_id', $sellerId);
+                })
+                ->latest('bid_time')
+                ->get();
+
+            return $this->ok('Winning bids retrieved successfully', $winningBids);
+        } catch (\Exception $e) {
+            return $this->error('Failed to retrieve winning bids: ' . $e->getMessage(), 500);
+        }
     }
 
     public function show(string $id) {}
