@@ -65,9 +65,16 @@ const BuyerDashboard = () => {
   const [favorites, setFavorites] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [criticalDataLoaded, setCriticalDataLoaded] = useState(false);
+  
+  // Cache to prevent redundant API calls
+  const dataCache = React.useRef({
+    lastFetch: null,
+    data: {}
+  });
   
   // Order tab states
-  const [orderTab, setOrderTab] = useState("to_pay"); // to_pay, to_ship, to_receive, completed, cancelled
+  const [orderTab, setOrderTab] = useState("to_pay"); // to_pay, to_ship, to_receive, for_pickup, completed, cancelled
   
   // Bid filtering states
   const [bidFilterDate, setBidFilterDate] = useState("");
@@ -104,6 +111,8 @@ const BuyerDashboard = () => {
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [showBatchPricingModal, setShowBatchPricingModal] = useState(false);
   const [showUnitSelectionModal, setShowUnitSelectionModal] = useState(false);
+  const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
+  const [selectedBidForHistory, setSelectedBidForHistory] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [bidAmount, setBidAmount] = useState("");
   const [rentalDates, setRentalDates] = useState({ start: "", end: "", duration: 1 });
@@ -179,64 +188,94 @@ const BuyerDashboard = () => {
     fetchAllData();
   }, []);
 
-  // Refetch orders when returning from checkout or other pages
-  useEffect(() => {
-    const refetchOrders = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const ordersResponse = await fetch('http://localhost:8000/api/v1/orders', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
-        });
-        const ordersData = await ordersResponse.json();
-        if (ordersData.success) {
-          setUserOrders(ordersData.data.data || []);
-          console.log('Orders refetched:', ordersData.data.data);
-        }
-      } catch (error) {
-        console.error('Failed to refetch orders:', error);
-      }
-    };
-
-    // Refetch orders whenever we navigate to this page
-    refetchOrders();
-  }, [location.key]); // location.key changes on each navigation
-
   const fetchAllData = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
+      const now = Date.now();
+      const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes cache
       
-      // Execute ALL API calls in parallel for faster loading
-      const [
-        listingsResponse,
-        auctionResponse,
-        directBuyResponse,
-        flashResponse,
-        equipmentResponse,
-        ordersResponse,
-        bidsResponse,
-        notificationsResponse,
-        feedbackResponse,
-        favoritesResponse
-      ] = await Promise.allSettled([
-        getListings(),
-        getAuctionListings(),
+      // Check cache first
+      if (dataCache.current.lastFetch && (now - dataCache.current.lastFetch) < CACHE_DURATION) {
+        console.log('Using cached data');
+        setLoading(false);
+        setCriticalDataLoaded(true);
+        return;
+      }
+      
+      console.log('Fetching critical data first...');
+      
+      // Priority 1: Critical data for initial page load (fetch immediately)
+      const criticalPromises = Promise.allSettled([
         getDirectBuyListings(),
+        getNotifications(),
+      ]);
+      
+      // Priority 2: Important but not critical (can load slightly delayed)
+      const importantPromises = Promise.allSettled([
         getFlashDeals(),
         getEquipment(),
+        getFavorites()
+      ]);
+      
+      // Priority 3: Secondary data (lazy load when needed)
+      const secondaryPromises = Promise.allSettled([
+        getListings(),
+        getAuctionListings(),
         fetch('http://localhost:8000/api/v1/orders', {
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
         }).then(res => res.json()),
         getMyBids(),
-        getNotifications(),
         fetch('http://localhost:8000/api/v1/buyer-feedback/my-received', {
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-        }).then(res => res.json()),
-        getFavorites()
+        }).then(res => res.json())
       ]);
+      
+      // Load critical data first
+      const [directBuyResponse, notificationsResponse] = await criticalPromises;
+      
+      // Process critical data immediately
+      if (directBuyResponse.status === 'fulfilled' && directBuyResponse.value.data?.message === 'Direct buy listings retrieved successfully') {
+        const paginatedData = directBuyResponse.value.data.data;
+        const listings = paginatedData?.data || paginatedData || [];
+        setDirectBuyProducts(transformListings(listings));
+      }
+      
+      if (notificationsResponse.status === 'fulfilled' && notificationsResponse.value.data?.success) {
+        setNotifications(notificationsResponse.value.data.data || []);
+      }
+      
+      // Mark critical data as loaded
+      setCriticalDataLoaded(true);
+      setLoading(false);
+      
+      // Load important data in background
+      const [flashResponse, equipmentResponse, favoritesResponse] = await importantPromises;
+      
+      if (flashResponse.status === 'fulfilled' && flashResponse.value.data?.success) {
+        const deals = flashResponse.value.data.data || [];
+        setFlashDeals(transformListings(deals));
+      }
+      
+      if (equipmentResponse.status === 'fulfilled' && equipmentResponse.value.data?.success) {
+        const equipment = equipmentResponse.value.data.data.data || [];
+        setEquipmentRentals(equipment);
+      }
+      
+      if (favoritesResponse.status === 'fulfilled' && favoritesResponse.value.data?.success) {
+        const favs = favoritesResponse.value.data.data || [];
+        setFavorites(favs);
+        setFavoriteIds(new Set(favs.map(f => f.listing_id)));
+      }
+      
+      // Load secondary data last
+      const [
+        listingsResponse,
+        auctionResponse,
+        ordersResponse,
+        bidsResponse,
+        feedbackResponse
+      ] = await secondaryPromises;
 
       // Process all listings
       if (listingsResponse.status === 'fulfilled' && listingsResponse.value.data?.message === 'Listings retrieved successfully') {
@@ -249,6 +288,9 @@ const BuyerDashboard = () => {
       if (auctionResponse.status === 'fulfilled' && auctionResponse.value.data?.message === 'Auction listings retrieved successfully') {
         const paginatedData = auctionResponse.value.data.data;
         const auctions = paginatedData?.data || paginatedData || [];
+        console.log('=== AUCTION LISTINGS FROM DATABASE ===');
+        console.log('Total auctions fetched:', auctions.length);
+        console.log('Auction data:', auctions);
         setAuctionProducts(transformListings(auctions));
       }
 
@@ -256,7 +298,21 @@ const BuyerDashboard = () => {
       if (directBuyResponse.status === 'fulfilled' && directBuyResponse.value.data?.message === 'Direct buy listings retrieved successfully') {
         const paginatedData = directBuyResponse.value.data.data;
         const directBuy = paginatedData?.data || paginatedData || [];
-        setDirectBuyProducts(transformListings(directBuy));
+        console.log('=== DIRECT BUY LISTINGS FROM DATABASE ===');
+        console.log('Total direct buy listings fetched:', directBuy.length);
+        
+        // Log category distribution
+        const categoryCount = {};
+        directBuy.forEach(item => {
+          const catSlug = item.category?.slug || 'no-category';
+          categoryCount[catSlug] = (categoryCount[catSlug] || 0) + 1;
+        });
+        console.log('Category distribution:', categoryCount);
+        console.log('Sample listing with category:', directBuy[0]);
+        
+        const transformed = transformListings(directBuy);
+        console.log('After transformation, sample product:', transformed[0]);
+        setDirectBuyProducts(transformed);
       }
 
       // Process flash deals
@@ -266,10 +322,31 @@ const BuyerDashboard = () => {
       }
 
       // Process equipment rentals
-      if (equipmentResponse.status === 'fulfilled' && equipmentResponse.value.data?.success) {
-        const equipment = equipmentResponse.value.data.data.data || [];
-        setEquipmentRentals(equipment);
+      console.log('=== EQUIPMENT RENTALS DEBUG ===');
+      console.log('Equipment Response Status:', equipmentResponse.status);
+      
+      if (equipmentResponse.status === 'fulfilled') {
+        console.log('Equipment Response Full:', equipmentResponse.value);
+        console.log('Equipment Response Data:', equipmentResponse.value.data);
+        console.log('Equipment Success Flag:', equipmentResponse.value.data?.success);
+        
+        if (equipmentResponse.value.data?.success) {
+          console.log('Equipment Data Object:', equipmentResponse.value.data.data);
+          const equipment = equipmentResponse.value.data.data.data || [];
+          console.log('Equipment Array:', equipment);
+          console.log('Equipment Count:', equipment.length);
+          console.log('First Equipment Item:', equipment[0]);
+          setEquipmentRentals(equipment);
+        } else {
+          console.error('Equipment API returned success: false');
+          console.error('Equipment Response:', equipmentResponse.value.data);
+        }
+      } else if (equipmentResponse.status === 'rejected') {
+        console.error('Equipment API Request Failed');
+        console.error('Rejection Reason:', equipmentResponse.reason);
+        console.error('Error Details:', equipmentResponse.reason?.response?.data);
       }
+      console.log('=== END EQUIPMENT DEBUG ===');
 
       // Process orders
       if (ordersResponse.status === 'fulfilled' && ordersResponse.value?.success) {
@@ -411,7 +488,11 @@ const BuyerDashboard = () => {
 
   // Transform backend listings to frontend format
   const transformListings = (listings) => {
+    console.log('=== TRANSFORMING LISTINGS ===');
+    console.log('Transforming', listings.length, 'listings');
+    
     return listings.map(listing => {
+      console.log('Transforming listing:', listing.name, '| category object:', listing.category, '| category_id:', listing.category_id);
       const currentBid = parseFloat(listing.current_bid) || parseFloat(listing.starting_bid) || 0;
       const startingBid = parseFloat(listing.starting_bid) || 0;
       
@@ -504,6 +585,18 @@ const BuyerDashboard = () => {
 
   // Filter products based on view mode
   const handleCategoryClick = (category) => {
+    console.log('=== CATEGORY CLICKED ===');
+    console.log('Selected category:', category);
+    console.log('Category ID:', category.id);
+    console.log('Category name:', category.name);
+    console.log('Total products in directBuyProducts:', directBuyProducts.length);
+    console.log('Total products in auctionProducts:', auctionProducts.length);
+    console.log('Current activeTab:', activeTab);
+    console.log('DirectBuy products with categories:', directBuyProducts.map(p => ({ 
+      id: p.id, 
+      name: p.name, 
+      category: p.category 
+    })));
     setSelectedCategory(category);
     setViewMode("category");
   };
@@ -569,11 +662,44 @@ const BuyerDashboard = () => {
       products = allProducts;
     } else if (viewMode === "category" && selectedCategory) {
       // Filter products by selected category using category ID/slug
-      products = allProducts.filter(product => {
-        const productCategorySlug = product.category?.toLowerCase().replace(/-/g, '_');
-        const selectedCategorySlug = selectedCategory.id?.toLowerCase().replace(/-/g, '_');
-        return productCategorySlug === selectedCategorySlug;
+      // Use directBuyProducts for marketplace categories
+      const sourceProducts = activeTab === "home" ? directBuyProducts : auctionProducts;
+      console.log('=== FILTERING BY CATEGORY ===');
+      console.log('viewMode:', viewMode);
+      console.log('selectedCategory object:', selectedCategory);
+      console.log('Selected category NAME:', selectedCategory.name);
+      console.log('Selected category ID:', selectedCategory.id);
+      console.log('Active tab:', activeTab);
+      console.log('Source products length:', sourceProducts.length);
+      
+      // Normalize the selected category for comparison
+      const normalizedSelectedCat = selectedCategory.id?.toLowerCase().replace(/-/g, '_');
+      console.log('Normalized selected category:', normalizedSelectedCat);
+      
+      // Show unique categories in source
+      const uniqueCategories = [...new Set(sourceProducts.map(p => {
+        const normalized = p.category?.toLowerCase().replace(/-/g, '_');
+        return normalized;
+      }))];
+      console.log('Unique categories in source (normalized):', uniqueCategories);
+      
+      products = sourceProducts.filter(product => {
+        // product.category is the slug from backend (e.g., "fruits", "vegetables", "farm-inputs")
+        // selectedCategory.id is from categoryItems (e.g., "fruits", "vegetables", "farm_inputs")
+        const productCategory = product.category?.toLowerCase().replace(/-/g, '_');
+        const selectedCat = normalizedSelectedCat;
+        const matches = productCategory === selectedCat;
+        
+        if (matches) {
+          console.log('✓ MATCH:', product.name, '| category:', productCategory);
+        }
+        
+        return matches;
       });
+      
+      console.log('=== FILTER COMPLETE ===');
+      console.log('Total products matching', selectedCategory.name, ':', products.length);
+      console.log('Matched products:', products.map(p => p.name));
     } else {
       // Home tab shows direct buy products, bidding tab shows auction products
       products = activeTab === "home" ? directBuyProducts : auctionProducts;
@@ -722,17 +848,17 @@ const BuyerDashboard = () => {
 
     switch (orderTab) {
       case 'to_pay':
-        return userOrders.filter(order => order.status === 'pending');
+        return userOrders.filter(order => order.status === 'pending' && order.delivery_method !== 'pickup');
       case 'to_ship':
-        return userOrders.filter(order => order.status === 'confirmed' || order.status === 'processing');
+        return userOrders.filter(order => (order.status === 'confirmed' || order.status === 'processing') && order.delivery_method !== 'pickup');
       case 'to_receive':
-        return userOrders.filter(order => order.status === 'shipped');
+        return userOrders.filter(order => order.status === 'shipped' && order.delivery_method !== 'pickup');
       case 'completed':
-        return userOrders.filter(order => order.status === 'delivered');
+        return userOrders.filter(order => order.status === 'delivered' && order.delivery_method !== 'pickup');
       case 'cancelled':
-        return userOrders.filter(order => order.status === 'cancelled' || order.status === 'refunded');
+        return userOrders.filter(order => (order.status === 'cancelled' || order.status === 'refunded') && order.delivery_method !== 'pickup');
       default:
-        return userOrders;
+        return userOrders.filter(order => order.delivery_method !== 'pickup');
     }
   };
 
@@ -788,12 +914,100 @@ const BuyerDashboard = () => {
           </div>
 
           {/* Navigation Tabs */}
-          <div className="px-8 py-2">
+          <div className="px-4 md:px-8 py-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-1">
+              {/* Desktop Navigation */}
+              <div className="hidden lg:flex items-center space-x-1">
                 <button
                   onClick={() => setActiveTab("home")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "home"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span className="hidden xl:inline">Home</span>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab("bidding")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "bidding"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span className="hidden xl:inline">Live Auctions</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("my-bids")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "my-bids"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <DollarSign className="w-4 h-4" />
+                  <span className="hidden xl:inline">My Bids</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("rentals")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "rentals"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <Tractor className="w-4 h-4" />
+                  <span className="hidden xl:inline">Equipment Rentals</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("orders")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "orders"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span className="hidden xl:inline">My Purchases</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("for-pickup")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "for-pickup"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span className="hidden xl:inline">For Pickup</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("saved")}
+                  className={`flex items-center space-x-2 px-3 xl:px-4 py-2 rounded-lg transition-colors font-medium text-xs xl:text-sm ${
+                    activeTab === "saved"
+                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
+                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <Heart className="w-4 h-4" />
+                  <span className="hidden xl:inline">Favorites</span>
+                </button>
+              </div>
+
+              {/* Mobile Navigation - Horizontal Scroll */}
+              <div className="lg:hidden flex items-center space-x-2 overflow-x-auto pb-2 flex-1 scrollbar-hide">
+                <button
+                  onClick={() => setActiveTab("home")}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors font-medium text-xs whitespace-nowrap ${
                     activeTab === "home"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -802,65 +1016,49 @@ const BuyerDashboard = () => {
                   <Package className="w-4 h-4" />
                   <span>Home</span>
                 </button>
-                
                 <button
                   onClick={() => setActiveTab("bidding")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors font-medium text-xs whitespace-nowrap ${
                     activeTab === "bidding"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <TrendingUp className="w-4 h-4" />
-                  <span>Live Auctions</span>
+                  <span>Auctions</span>
                 </button>
-
                 <button
                   onClick={() => setActiveTab("my-bids")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors font-medium text-xs whitespace-nowrap ${
                     activeTab === "my-bids"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <DollarSign className="w-4 h-4" />
-                  <span>My Bids</span>
+                  <span>Bids</span>
                 </button>
-
-                <button
-                  onClick={() => setActiveTab("rentals")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
-                    activeTab === "rentals"
-                      ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
-                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  <Tractor className="w-4 h-4" />
-                  <span>Equipment Rentals</span>
-                </button>
-
                 <button
                   onClick={() => setActiveTab("orders")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors font-medium text-xs whitespace-nowrap ${
                     activeTab === "orders"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  <span>My Purchases</span>
+                  <span>Orders</span>
                 </button>
-
                 <button
                   onClick={() => setActiveTab("saved")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors font-medium text-xs whitespace-nowrap ${
                     activeTab === "saved"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <Heart className="w-4 h-4" />
-                  <span>Favorites</span>
+                  <span>Saved</span>
                 </button>
               </div>
 
@@ -868,68 +1066,68 @@ const BuyerDashboard = () => {
               <div className="flex items-center space-x-1">
                 <button
                   onClick={() => setActiveTab("profile")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-2 md:px-4 py-2 rounded-lg transition-colors font-medium text-xs md:text-sm ${
                     activeTab === "profile"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <User className="w-4 h-4" />
-                  <span>Profile</span>
+                  <span className="hidden md:inline">Profile</span>
                 </button>
                 <button 
                   onClick={() => setActiveTab("settings")}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm ${
+                  className={`flex items-center space-x-2 px-2 md:px-4 py-2 rounded-lg transition-colors font-medium text-xs md:text-sm ${
                     activeTab === "settings"
                       ? "bg-green-50 dark:bg-gray-800 text-green-700 dark:text-green-400"
                       : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   }`}
                 >
                   <Settings className="w-4 h-4" />
-                  <span>Settings</span>
+                  <span className="hidden md:inline">Settings</span>
                 </button>
                 <button 
                   onClick={handleLogout}
-                  className="flex items-center space-x-2 px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium text-sm"
+                  className="flex items-center space-x-2 px-2 md:px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium text-xs md:text-sm"
                 >
                   <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
+                  <span className="hidden md:inline">Logout</span>
                 </button>
               </div>
             </div>
           </div>
 
           {/* Search Bar */}
-          <div className="px-8 py-3 border-t border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 max-w-3xl">
+          <div className="px-4 md:px-8 py-3 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 max-w-full md:max-w-3xl">
                 <div className="relative">
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Search className="absolute left-3 md:left-4 top-1/2 transform -translate-y-1/2 w-4 md:w-5 h-4 md:h-5 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Search for agricultural products, equipment, or sellers..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyPress={handleSearchKeyPress}
-                    className="w-full pl-12 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full pl-10 md:pl-12 pr-4 py-2 md:py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm md:text-base text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
               {/* Right side icons */}
-              <div className="flex items-center space-x-4 ml-6">
+              <div className="flex items-center space-x-2 md:space-x-4">
                 <button 
                   onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                  className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0"
                 >
-                  <Bell className="w-6 h-6" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  <Bell className="w-5 md:w-6 h-5 md:h-6" />
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 md:w-5 h-4 md:h-5 flex items-center justify-center text-[10px] md:text-xs">
                     4
                   </span>
                 </button>
-                <button className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors">
-                  <ShoppingCart className="w-6 h-6" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                <button className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0">
+                  <ShoppingCart className="w-5 md:w-6 h-5 md:h-6" />
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 md:w-5 h-4 md:h-5 flex items-center justify-center text-[10px] md:text-xs">
                     2
                   </span>
                 </button>
@@ -940,31 +1138,31 @@ const BuyerDashboard = () => {
 
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="w-full h-full px-8 py-6 pb-16">
+          <div className="w-full h-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6 pb-16">
             
             {/* HOME TAB */}
             {activeTab === "home" && (
-              <div className="space-y-6">
+              <div className="space-y-4 md:space-y-6">
                 {/* Hero Banners - Only show on home view */}
                 {viewMode === "home" && (
                   <>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="col-span-2 bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-8 text-white shadow-lg">
-                        <h2 className="text-3xl font-bold mb-2">🌾 Fresh Harvest Season!</h2>
-                        <p className="mb-4 text-green-50">Up to 30% off on premium agricultural products</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+                      <div className="lg:col-span-2 bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-4 md:p-6 lg:p-8 text-white shadow-lg">
+                        <h2 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2">🌾 Fresh Harvest Season!</h2>
+                        <p className="mb-4 text-sm md:text-base text-green-50">Up to 30% off on premium agricultural products</p>
                         <button 
                           onClick={() => setViewMode("all-products")}
-                          className="bg-white text-green-600 px-6 py-2 rounded-lg font-semibold hover:bg-green-50 transition-colors"
+                          className="bg-white text-green-600 px-4 md:px-6 py-2 rounded-lg text-sm md:text-base font-semibold hover:bg-green-50 transition-colors"
                         >
                           Shop Now
                         </button>
                       </div>
-                      <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-8 text-white shadow-lg">
-                        <h3 className="text-xl font-bold mb-2">⚡ Flash Deals</h3>
+                      <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-4 md:p-6 lg:p-8 text-white shadow-lg">
+                        <h3 className="text-lg md:text-xl font-bold mb-2">⚡ Flash Deals</h3>
                         <p className="text-sm mb-4 text-orange-50">Limited time offers</p>
                         <button 
                           onClick={() => setViewMode("flash-deals")}
-                          className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-50 transition-colors"
+                          className="bg-white text-orange-600 px-3 md:px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-50 transition-colors"
                         >
                           View All
                         </button>
@@ -974,7 +1172,7 @@ const BuyerDashboard = () => {
                     {/* Categories Section */}
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Shop by Category</h3>
-                      <div className="grid grid-cols-7 gap-4">
+                      <div className="grid grid-cols-7 gap-2 md:gap-4">
                         {categoryItems.map((category) => {
                           const IconComponent = category.icon;
                           return (
@@ -994,7 +1192,7 @@ const BuyerDashboard = () => {
                     </div>
 
                     {/* Quick Access Features */}
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                       {quickAccess.map((feature) => {
                         const IconComponent = feature.icon;
                         return (
@@ -1059,7 +1257,7 @@ const BuyerDashboard = () => {
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                     {getDisplayProducts().map((product) => (
                       <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
                         <div className="relative">
@@ -1230,7 +1428,7 @@ const BuyerDashboard = () => {
                       <p className="text-sm mt-2">Check back later for new auction listings!</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                     {auctionProducts.map((product) => (
                       <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
                         <div className="relative">
@@ -1243,11 +1441,6 @@ const BuyerDashboard = () => {
                               e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop&q=80';
                             }}
                           />
-                          {product.discount && (
-                            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-bold">
-                              -{product.discount} OFF
-                            </div>
-                          )}
                           <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
                             <Clock className="w-3 h-3 inline mr-1" />
                             {product.expiresIn}
@@ -1370,8 +1563,18 @@ const BuyerDashboard = () => {
                 {/* Available Equipment */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 mb-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Available Equipment</h2>
-                  <div className="grid grid-cols-3 gap-6">
-                    {equipmentRentals.map((equipment) => (
+                  {loading ? (
+                    <div className="flex justify-center items-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+                    </div>
+                  ) : equipmentRentals.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Tractor className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-500 dark:text-gray-400">No equipment available at the moment</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                      {equipmentRentals.map((equipment) => (
                       <div key={equipment.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
                         <img
                           src={equipment.image}
@@ -1379,7 +1582,7 @@ const BuyerDashboard = () => {
                           className="w-full h-48 object-cover"
                           loading="lazy"
                           onError={(e) => {
-                            e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop&q=80';
+                            e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop&q=60&auto=format';
                           }}
                         />
                         <div className="p-4">
@@ -1427,6 +1630,7 @@ const BuyerDashboard = () => {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
 
                 {/* My Rentals */}
@@ -1488,62 +1692,62 @@ const BuyerDashboard = () => {
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
                   {/* Tab Headers */}
                   <div className="border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex overflow-x-auto">
+                    <div className="flex overflow-x-auto scrollbar-hide">
                       <button 
                         onClick={() => setOrderTab('to_pay')}
-                        className={`px-6 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                        className={`px-4 md:px-6 py-2 md:py-3 text-xs md:text-sm font-medium whitespace-nowrap border-b-2 ${
                           orderTab === 'to_pay' 
                             ? 'text-orange-600 border-orange-600' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-transparent'
                         }`}
                       >
-                        To Pay ({userOrders.filter(o => o.status === 'pending').length})
+                        To Pay ({userOrders.filter(o => o.status === 'pending' && o.delivery_method !== 'pickup').length})
                       </button>
                       <button 
                         onClick={() => setOrderTab('to_ship')}
-                        className={`px-6 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                        className={`px-4 md:px-6 py-2 md:py-3 text-xs md:text-sm font-medium whitespace-nowrap border-b-2 ${
                           orderTab === 'to_ship' 
                             ? 'text-orange-600 border-orange-600' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-transparent'
                         }`}
                       >
-                        To Ship ({userOrders.filter(o => o.status === 'confirmed' || o.status === 'processing').length})
+                        To Ship ({userOrders.filter(o => (o.status === 'confirmed' || o.status === 'processing') && o.delivery_method !== 'pickup').length})
                       </button>
                       <button 
                         onClick={() => setOrderTab('to_receive')}
-                        className={`px-6 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                        className={`px-4 md:px-6 py-2 md:py-3 text-xs md:text-sm font-medium whitespace-nowrap border-b-2 ${
                           orderTab === 'to_receive' 
                             ? 'text-orange-600 border-orange-600' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-transparent'
                         }`}
                       >
-                        To Receive ({userOrders.filter(o => o.status === 'shipped').length})
+                        To Receive ({userOrders.filter(o => o.status === 'shipped' && o.delivery_method !== 'pickup').length})
                       </button>
                       <button 
                         onClick={() => setOrderTab('completed')}
-                        className={`px-6 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                        className={`px-4 md:px-6 py-2 md:py-3 text-xs md:text-sm font-medium whitespace-nowrap border-b-2 ${
                           orderTab === 'completed' 
                             ? 'text-orange-600 border-orange-600' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-transparent'
                         }`}
                       >
-                        Completed ({userOrders.filter(o => o.status === 'delivered').length})
+                        Completed ({userOrders.filter(o => o.status === 'delivered' && o.delivery_method !== 'pickup').length})
                       </button>
                       <button 
                         onClick={() => setOrderTab('cancelled')}
-                        className={`px-6 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                        className={`px-4 md:px-6 py-2 md:py-3 text-xs md:text-sm font-medium whitespace-nowrap border-b-2 ${
                           orderTab === 'cancelled' 
                             ? 'text-orange-600 border-orange-600' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-transparent'
                         }`}
                       >
-                        Cancelled ({userOrders.filter(o => o.status === 'cancelled' || o.status === 'refunded').length})
+                        Cancelled ({userOrders.filter(o => (o.status === 'cancelled' || o.status === 'refunded') && o.delivery_method !== 'pickup').length})
                       </button>
                     </div>
                   </div>
 
                   {/* Orders List */}
-                  <div className="p-6">
+                  <div className="p-3 md:p-6">
                     {getFilteredOrders().length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16">
                         <Package className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
@@ -1563,15 +1767,20 @@ const BuyerDashboard = () => {
                         {getFilteredOrders().map((order) => (
                           <div key={order.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                             {/* Order Header */}
-                            <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 border-b border-gray-200 dark:border-gray-600">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-4">
+                            <div className="bg-gray-50 dark:bg-gray-700 px-3 md:px-4 py-2 md:py-3 border-b border-gray-200 dark:border-gray-600">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2 md:space-x-4">
                                   <Package className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                                   <span className="font-semibold text-gray-900 dark:text-white">
                                     {order.seller?.name || 'Unknown Seller'}
                                   </span>
                                 </div>
                                 <div className="flex items-center space-x-4">
+                                  {order.delivery_method === 'pickup' && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-400">
+                                      📦 FOR PICKUP
+                                    </span>
+                                  )}
                                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                                     order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
                                     order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' :
@@ -1589,12 +1798,12 @@ const BuyerDashboard = () => {
                             </div>
 
                             {/* Order Body */}
-                            <div className="p-4">
-                              <div className="flex space-x-4">
+                            <div className="p-3 md:p-4">
+                              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
                                 <img 
                                   src={order.listing?.image_url?.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing?.image_url}`} 
                                   alt={order.listing?.name}
-                                  className="w-20 h-20 object-cover rounded"
+                                  className="w-full sm:w-20 h-32 sm:h-20 object-cover rounded"
                                   onError={(e) => {
                                     e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
                                   }}
@@ -1619,6 +1828,19 @@ const BuyerDashboard = () => {
                                   </div>
                                 </div>
                               </div>
+
+                              {/* Pickup Notes */}
+                              {order.delivery_method === 'pickup' && order.pickup_notes && (
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                  <div className="flex items-start space-x-2">
+                                    <Package className="w-4 h-4 text-indigo-600 mt-1 flex-shrink-0" />
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">Pickup Notes:</div>
+                                      <div className="text-sm text-gray-600 dark:text-gray-400">{order.pickup_notes}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
 
                               {/* Order Actions */}
                               <div className="flex items-center justify-end space-x-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -1655,6 +1877,167 @@ const BuyerDashboard = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* For Pickup Orders - Separate Section */}
+                <div className="mt-8 pt-8 border-t-2 border-indigo-200 dark:border-indigo-800">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                        <Package className="w-8 h-8 mr-3 text-indigo-600" />
+                        For Pickup Orders
+                      </h2>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Orders ready for pickup - no delivery fee
+                      </p>
+                    </div>
+                    <span className="px-4 py-2 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-full text-sm font-semibold">
+                      {userOrders.filter(o => o.delivery_method === 'pickup').length} Orders
+                    </span>
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
+                    <div className="p-6">
+                      {userOrders.filter(order => order.delivery_method === 'pickup').length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16">
+                          <Package className="w-16 h-16 text-indigo-300 dark:text-indigo-600 mb-4" />
+                          <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                            No Pickup Orders
+                          </h3>
+                          <p className="text-gray-500 dark:text-gray-400 text-center">
+                            You don't have any orders for pickup at the moment
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {userOrders
+                            .filter(order => order.delivery_method === 'pickup')
+                            .map((order) => (
+                              <div key={order.id} className="border-2 border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden">
+                                {/* Order Header */}
+                                <div className="bg-indigo-50 dark:bg-indigo-900/20 px-4 py-3 border-b border-indigo-200 dark:border-indigo-700">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                      <Package className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                                      <span className="font-semibold text-gray-900 dark:text-white">
+                                        {order.seller?.name || 'Unknown Seller'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center space-x-4">
+                                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-400">
+                                        📦 FOR PICKUP
+                                      </span>
+                                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                        order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                                        order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' :
+                                        order.status === 'shipped' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400' :
+                                        order.status === 'delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                                        'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                      }`}>
+                                        {order.status === 'pending' && 'PENDING PAYMENT'}
+                                        {order.status === 'confirmed' && 'CONFIRMED'}
+                                        {order.status === 'processing' && 'PREPARING'}
+                                        {order.status === 'shipped' && 'READY FOR PICKUP'}
+                                        {order.status === 'delivered' && 'PICKED UP'}
+                                        {(order.status === 'cancelled' || order.status === 'refunded') && order.status.toUpperCase()}
+                                      </span>
+                                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                                        #{order.id}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Order Body */}
+                                <div className="p-4 bg-white dark:bg-gray-800">
+                                  <div className="flex space-x-4">
+                                    <img 
+                                      src={order.listing?.image_url?.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing?.image_url}`} 
+                                      alt={order.listing?.name}
+                                      className="w-20 h-20 object-cover rounded"
+                                      onError={(e) => {
+                                        e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                      }}
+                                    />
+                                    <div className="flex-1">
+                                      <h4 className="font-medium text-gray-900 dark:text-white mb-1">
+                                        {order.listing?.name}
+                                      </h4>
+                                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        Quantity: {order.quantity} {order.unit}
+                                      </p>
+                                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        ₱{parseFloat(order.price_per_unit).toFixed(2)} / {order.unit}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                                        Order Total
+                                      </div>
+                                      <div className="text-lg font-bold text-indigo-600">
+                                        ₱{parseFloat(order.total_amount).toFixed(2)}
+                                      </div>
+                                      <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                        No Shipping Fee
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Pickup Notes */}
+                                  {order.pickup_notes && (
+                                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                      <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3">
+                                        <div className="flex items-start space-x-2">
+                                          <Package className="w-4 h-4 text-indigo-600 mt-0.5 flex-shrink-0" />
+                                          <div>
+                                            <div className="text-xs font-semibold text-indigo-900 dark:text-indigo-300 mb-1">Your Pickup Notes:</div>
+                                            <div className="text-sm text-gray-700 dark:text-gray-300">{order.pickup_notes}</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Order Actions */}
+                                  <div className="flex items-center justify-end space-x-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                    {order.status === 'pending' && (
+                                      <button
+                                        onClick={() => {
+                                          if (window.confirm('Are you sure you want to cancel this order?')) {
+                                            handleCancelOrder(order.id, 'Changed my mind');
+                                          }
+                                        }}
+                                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                      >
+                                        Cancel Order
+                                      </button>
+                                    )}
+                                    {order.status === 'shipped' && (
+                                      <button
+                                        onClick={() => handleOrderReceived(order.id)}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+                                      >
+                                        Confirm Picked Up
+                                      </button>
+                                    )}
+                                    {order.status === 'delivered' && (
+                                      <button
+                                        className="px-4 py-2 border border-indigo-600 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg text-sm font-medium"
+                                      >
+                                        Rate & Review
+                                      </button>
+                                    )}
+                                    <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                      Contact Seller
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1776,14 +2159,14 @@ const BuyerDashboard = () => {
             {activeTab === "profile" && (
               <div className="space-y-6">
                 {/* Profile Header - Shopee Style */}
-                <div className="bg-gradient-to-r from-green-500 to-blue-600 rounded-xl p-6 text-white">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center">
+                <div className="bg-gradient-to-r from-green-500 to-blue-600 rounded-xl p-4 md:p-6 text-white">
+                  <div className="flex flex-col sm:flex-row items-center sm:space-x-4 gap-3 sm:gap-0">
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-white/20 rounded-full flex items-center justify-center">
                       <User className="w-10 h-10 text-white" />
                     </div>
-                    <div className="flex-1">
-                      <h2 className="text-2xl font-bold">{userName}</h2>
-                      <div className="flex items-center space-x-4 mt-2">
+                    <div className="flex-1 text-center sm:text-left">
+                      <h2 className="text-xl md:text-2xl font-bold">{userName}</h2>
+                      <div className="flex flex-col sm:flex-row items-center sm:space-x-4 gap-2 sm:gap-0 mt-2">
                         <div className="text-sm">
                           <span className="text-green-100">Trust Score: </span>
                           <span className="font-semibold text-xl">{profileStats.trustScore}/100</span>
@@ -1803,7 +2186,7 @@ const BuyerDashboard = () => {
                 {/* Purchase Status Grid - Similar to Shopee */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">My Purchases</h3>
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                     <div className="text-center">
                       <div className="w-12 h-12 mx-auto mb-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
                         <CreditCard className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -2144,6 +2527,164 @@ const BuyerDashboard = () => {
               </div>
             )}
 
+            {/* FOR PICKUP TAB */}
+            {activeTab === "for-pickup" && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                    <Package className="w-8 h-8 mr-3 text-green-600" />
+                    For Pickup Orders
+                  </h1>
+                </div>
+                
+                {/* Pickup Orders List */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
+                  <div className="p-6">
+                    {userOrders.filter(o => o.delivery_method === 'pickup').length > 0 ? (
+                      <div className="space-y-4">
+                        {userOrders
+                          .filter(order => order.delivery_method === 'pickup')
+                          .map((order) => (
+                            <div key={order.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                              {/* Order Header */}
+                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-4">
+                                    <Package className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                                    <div>
+                                      <span className="text-sm text-gray-600 dark:text-gray-400">Order ID:</span>
+                                      <span className="ml-2 font-semibold text-gray-900 dark:text-white">#{order.id}</span>
+                                    </div>
+                                    <div className="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
+                                    <div>
+                                      <span className="text-sm text-gray-600 dark:text-gray-400">Seller:</span>
+                                      <span className="ml-2 font-medium text-gray-900 dark:text-white">{order.seller?.name || order.farmer?.name || "N/A"}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-3">
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 flex items-center">
+                                      <Package className="w-3 h-3 mr-1" />
+                                      FOR PICKUP
+                                    </span>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                                      order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                                      order.status === 'delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                                      order.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                                      'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
+                                    }`}>
+                                      {order.status === 'pending' && '⏳ To Pay'}
+                                      {order.status === 'confirmed' && '📦 Ready for Pickup'}
+                                      {order.status === 'processing' && '📦 Preparing'}
+                                      {order.status === 'delivered' && '✅ Picked Up'}
+                                      {order.status === 'cancelled' && '❌ Cancelled'}
+                                      {!['pending', 'confirmed', 'processing', 'delivered', 'cancelled'].includes(order.status) && order.status}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Order Content */}
+                              <div className="p-6">
+                                <div className="flex items-start space-x-4">
+                                  <img
+                                    src={order.listing?.image_url || order.product?.image || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&q=80'}
+                                    alt={order.listing?.name || order.product?.name || 'Product'}
+                                    className="w-24 h-24 object-cover rounded-lg"
+                                    onError={(e) => {
+                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&q=80';
+                                    }}
+                                  />
+                                  <div className="flex-1">
+                                    <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
+                                      {order.listing?.name || order.product?.name || 'Product'}
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                      <div>
+                                        <p className="text-gray-600 dark:text-gray-400">Quantity</p>
+                                        <p className="font-medium text-gray-900 dark:text-white">
+                                          {order.quantity} {order.listing?.unit || 'kg'}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-600 dark:text-gray-400">Unit Price</p>
+                                        <p className="font-medium text-gray-900 dark:text-white">
+                                          ₱{parseFloat(order.unit_price || order.listing?.buy_now_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-600 dark:text-gray-400">Total Amount</p>
+                                        <p className="font-bold text-lg text-green-600 dark:text-green-400">
+                                          ₱{parseFloat(order.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-600 dark:text-gray-400">Payment Method</p>
+                                        <p className="font-medium text-gray-900 dark:text-white capitalize">
+                                          {order.payment_method || 'N/A'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Pickup Location */}
+                                    <div className="mt-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4">
+                                      <div className="flex items-start">
+                                        <MapPin className="w-5 h-5 text-indigo-600 dark:text-indigo-400 mr-2 mt-0.5" />
+                                        <div>
+                                          <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-1">Pickup Location</p>
+                                          <p className="text-sm text-indigo-700 dark:text-indigo-400">
+                                            {order.delivery_address || order.listing?.location || 'Location not specified'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Order Date */}
+                                    <div className="mt-3 flex items-center text-sm text-gray-500 dark:text-gray-400">
+                                      <Clock className="w-4 h-4 mr-1" />
+                                      Ordered on {new Date(order.created_at).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric'
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="mt-4 flex justify-end space-x-3">
+                                  {order.status === 'pending' && (
+                                    <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                      Pay Now
+                                    </button>
+                                  )}
+                                  {order.status === 'confirmed' && (
+                                    <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                      Contact Seller
+                                    </button>
+                                  )}
+                                  <button className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors">
+                                    View Details
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Package className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No pickup orders yet</h3>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          Orders with pickup delivery method will appear here
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* MY BIDS TAB */}
             {activeTab === "my-bids" && (
               <div className="space-y-6">
@@ -2319,6 +2860,17 @@ const BuyerDashboard = () => {
                                 }`}>
                                   {bid.status}
                                 </span>
+                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                  bid.payment_status === "paid" 
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                    : bid.payment_status === "partial"
+                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                    : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                                }`}>
+                                  {bid.payment_status === "paid" ? "Paid in Full" : 
+                                   bid.payment_status === "partial" ? "Partially Paid" : 
+                                   "Unpaid"}
+                                </span>
                                 
                                 <button 
                                   onClick={() => {
@@ -2350,6 +2902,112 @@ const BuyerDashboard = () => {
                               </p>
                             </div>
                           </div>
+
+                          {/* Payment Transparency Card - Only for Winning Bids After Auction Ends */}
+                          {bid.status === "Winning" && bid.is_winning && bid.listing?.auction_end && new Date(bid.listing.auction_end) < new Date() && (
+                            <div className="mt-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 rounded-lg p-4 border-2 border-green-200 dark:border-green-800">
+                              <div className="flex items-center justify-between mb-3">
+                                <h5 className="font-semibold text-green-900 dark:text-green-300 flex items-center">
+                                  <DollarSign className="w-5 h-5 mr-1" />
+                                  Payment Transparency
+                                </h5>
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                  bid.fulfillment_status === "completed" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
+                                  bid.fulfillment_status === "ready_for_pickup" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" :
+                                  bid.fulfillment_status === "in_transit" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" :
+                                  "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                }`}>
+                                  {bid.fulfillment_status === "completed" ? "✅ Completed" :
+                                   bid.fulfillment_status === "ready_for_pickup" ? "📦 Ready for Pickup" :
+                                   bid.fulfillment_status === "in_transit" ? "🚚 In Transit" :
+                                   "⏳ Pending Payment"}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                <div className="bg-white dark:bg-gray-800/50 rounded-lg p-3">
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                    ₱{parseFloat(bid.winning_bid_amount || bid.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  </p>
+                                </div>
+                                
+                                <div className="bg-white dark:bg-gray-800/50 rounded-lg p-3">
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Downpayment</p>
+                                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                                    ₱{parseFloat(bid.downpayment_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  </p>
+                                </div>
+                                
+                                <div className="bg-white dark:bg-gray-800/50 rounded-lg p-3">
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                    ₱{parseFloat(bid.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  </p>
+                                </div>
+                                
+                                <div className="bg-white dark:bg-gray-800/50 rounded-lg p-3">
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining Balance</p>
+                                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                    ₱{parseFloat(bid.remaining_balance || (bid.winning_bid_amount || bid.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {bid.payment_deadline && (
+                                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 mb-3 flex items-center">
+                                  <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                                  <div>
+                                    <p className="text-sm font-medium text-yellow-900 dark:text-yellow-300">Payment Due Date</p>
+                                    <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                                      {new Date(bid.payment_deadline).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric'
+                                      })}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* View Payment History Button */}
+                              <div className="mt-3">
+                                <button 
+                                  onClick={() => {
+                                    setSelectedBidForHistory(bid);
+                                    setShowPaymentHistoryModal(true);
+                                  }}
+                                  className="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  View Payment History
+                                </button>
+                              </div>
+
+                              {/* Payment History Preview */}
+                              {bid.payments && bid.payments.length > 0 && (
+                                <div className="mt-3 border-t border-green-200 dark:border-green-800 pt-3">
+                                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recent Payments:</p>
+                                  <div className="space-y-1">
+                                    {bid.payments.slice(0, 2).map((payment, idx) => (
+                                      <div key={idx} className="flex items-center justify-between text-xs bg-white dark:bg-gray-800/30 rounded p-2">
+                                        <span className="text-gray-600 dark:text-gray-400">
+                                          {payment.payment_type === 'downpayment' ? '💰 Downpayment' : 
+                                           payment.payment_type === 'balance' ? '💵 Balance Payment' : 
+                                           '✅ Full Payment'}
+                                        </span>
+                                        <span className="font-medium text-gray-900 dark:text-white">
+                                          ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                        <span className="text-gray-500 dark:text-gray-400">
+                                          {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2361,7 +3019,7 @@ const BuyerDashboard = () => {
             {/* Notifications Dropdown */}
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="fixed top-20 right-8 bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-96 z-50">
+              <div className="fixed top-16 md:top-20 right-2 md:right-8 bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[calc(100vw-1rem)] sm:w-96 max-w-md z-50">
                 <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
                     <Bell className="w-5 h-5 mr-2" />
@@ -2773,6 +3431,173 @@ const BuyerDashboard = () => {
         </div>
         );
       })()}
+
+      {/* Payment History Modal */}
+      {showPaymentHistoryModal && selectedBidForHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Payment History</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {selectedBidForHistory.productName || selectedBidForHistory.listing?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPaymentHistoryModal(false);
+                  setSelectedBidForHistory(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Payment Summary */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 mb-6">
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Payment Summary</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">
+                      ₱{parseFloat(selectedBidForHistory.winning_bid_amount || selectedBidForHistory.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Downpayment</p>
+                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      ₱{parseFloat(selectedBidForHistory.downpayment_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                      ₱{parseFloat(selectedBidForHistory.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800/50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining</p>
+                    <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                      ₱{parseFloat(selectedBidForHistory.remaining_balance || (selectedBidForHistory.winning_bid_amount || selectedBidForHistory.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                </div>
+                {selectedBidForHistory.payment_deadline && (
+                  <div className="mt-4 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg p-3 flex items-center">
+                    <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-900 dark:text-yellow-300">Next Payment Due</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        {new Date(selectedBidForHistory.payment_deadline).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment History List */}
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Transaction History</h4>
+                {selectedBidForHistory.payments && selectedBidForHistory.payments.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedBidForHistory.payments.map((payment, idx) => (
+                      <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <span className="text-2xl">
+                                {payment.payment_type === 'downpayment' ? '💰' : 
+                                 payment.payment_type === 'balance' ? '💵' : 
+                                 '✅'}
+                              </span>
+                              <div>
+                                <p className="font-semibold text-gray-900 dark:text-white">
+                                  {payment.payment_type === 'downpayment' ? 'Downpayment' : 
+                                   payment.payment_type === 'balance' ? 'Balance Payment' : 
+                                   'Full Payment'}
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                  {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                              <div>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Amount</p>
+                                <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Payment Method</p>
+                                <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                                  {payment.payment_method.replace('_', ' ')}
+                                </p>
+                              </div>
+                            </div>
+                            {payment.confirmation_id && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Reference ID</p>
+                                <p className="text-sm font-mono text-gray-900 dark:text-white">{payment.confirmation_id}</p>
+                              </div>
+                            )}
+                            {payment.notes && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Notes</p>
+                                <p className="text-sm text-gray-700 dark:text-gray-300">{payment.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            payment.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                            payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                            'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          }`}>
+                            {payment.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <DollarSign className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No payment history</h3>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      No payments have been recorded for this auction yet
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowPaymentHistoryModal(false);
+                    setSelectedBidForHistory(null);
+                  }}
+                  className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

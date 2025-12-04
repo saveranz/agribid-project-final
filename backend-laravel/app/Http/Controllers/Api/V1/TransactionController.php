@@ -19,10 +19,16 @@ class TransactionController extends Controller
      */
     public function index()
     {
-        $transactions = Transaction::with(['listing', 'seller'])
-            ->where('buyer_id', Auth::id())
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $userId = Auth::id();
+        $cacheKey = "orders_user_{$userId}";
+        
+        // Cache for 30 seconds
+        $transactions = cache()->remember($cacheKey, 30, function () {
+            return Transaction::with(['listing:id,title,unit,image_url', 'seller:id,name'])
+                ->where('buyer_id', Auth::id())
+                ->orderBy('created_at', 'desc')
+                ->get();
+        });
 
         $transactions = $transactions->map(function ($transaction) {
             return [
@@ -68,8 +74,19 @@ class TransactionController extends Controller
 
         DB::beginTransaction();
         try {
+            // Check if enough stock is available
+            if ($listing->quantity < $request->quantity) {
+                return $this->error('Insufficient stock available. Only ' . $listing->quantity . ' ' . $listing->unit . ' available.', 400);
+            }
+
             // Calculate total amount
             $totalAmount = $listing->buy_now_price * $request->quantity;
+
+            // Deduct stock from listing
+            if (!$listing->deductStock($request->quantity)) {
+                DB::rollBack();
+                return $this->error('Failed to deduct stock. Please try again.', 500);
+            }
 
             // Create transaction
             $transaction = Transaction::create([
@@ -85,13 +102,10 @@ class TransactionController extends Controller
                 'expected_delivery_date' => now()->addDays(3),
             ]);
 
-            // Update listing status if needed
-            if ($listing->quantity <= $request->quantity) {
-                $listing->status = 'sold';
-                $listing->save();
-            }
-
             DB::commit();
+
+            // Clear user's order cache
+            cache()->forget("orders_user_{$request->user()->id}");
 
             return $this->success([
                 'transaction_id' => $transaction->id,

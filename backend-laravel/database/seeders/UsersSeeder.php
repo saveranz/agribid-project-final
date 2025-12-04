@@ -141,6 +141,17 @@ class UsersSeeder extends Seeder
             ],
         ];
 
+        // Admin User
+        $admin = [
+            'name' => 'Admin User',
+            'email' => 'admin@agribid.com',
+            'password' => Hash::make('admin123'),
+            'role' => 'admin',
+        ];
+
+        // Insert admin
+        User::create($admin);
+
         // Insert farmers
         foreach ($farmers as $farmer) {
             User::create($farmer);
@@ -151,7 +162,6 @@ class UsersSeeder extends Seeder
             User::create($buyer);
         }
 
-        $this->command->info('Created 10 farmers and 10 buyers successfully!');
+        $this->command->info('Created 1 admin, 10 farmers and 10 buyers successfully!');
     }
 }
-

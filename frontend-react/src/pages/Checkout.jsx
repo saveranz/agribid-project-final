@@ -28,6 +28,8 @@ const Checkout = () => {
   });
 
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cod");
+  const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState("deliver");
+  const [pickupNotes, setPickupNotes] = useState("");
   const [voucher, setVoucher] = useState("");
   const [messageForSeller, setMessageForSeller] = useState("");
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -42,14 +44,15 @@ const Checkout = () => {
     phone: "",
   });
   
-  // Calculate shipping fee based on location
-  const calculateShippingFee = (city) => {
+  // Calculate shipping fee based on location and delivery method
+  const calculateShippingFee = (city, deliveryMethod) => {
+    if (deliveryMethod === 'pickup') return 0; // No shipping for pickup
     const bongabongArea = ['bongabong', 'roxas', 'mansalay', 'bulalacao'];
     const normalizedCity = (city || '').toLowerCase();
     return bongabongArea.some(area => normalizedCity.includes(area)) ? 50 : 100;
   };
   
-  const shippingFee = calculateShippingFee(userData.city);
+  const shippingFee = calculateShippingFee(userData.city, selectedDeliveryMethod);
   const shippingDiscount = 0; // No automatic discount
   const totalPayment = subtotal + shippingFee - shippingDiscount;
 
@@ -87,6 +90,8 @@ const Checkout = () => {
           quantity,
           unit,
           payment_method: selectedPaymentMethod,
+          delivery_method: selectedDeliveryMethod,
+          pickup_notes: pickupNotes,
           message_for_seller: messageForSeller,
           voucher_code: voucher,
           price_per_unit: subtotal / quantity,
@@ -369,6 +374,95 @@ const Checkout = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Delivery Method */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="font-semibold text-gray-900 dark:text-white">
+              Delivery Method
+            </h2>
+          </div>
+
+          {/* Deliver Option */}
+          <div
+            onClick={() => setSelectedDeliveryMethod("deliver")}
+            className={`p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+              selectedDeliveryMethod === "deliver" ? "bg-green-50 dark:bg-green-900/20" : ""
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Truck className="w-6 h-6 text-green-600" />
+                <div>
+                  <span className="text-gray-900 dark:text-white font-medium block">
+                    Deliver to Address
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Product will be delivered to your address
+                  </span>
+                </div>
+              </div>
+              <div
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  selectedDeliveryMethod === "deliver"
+                    ? "border-green-500 bg-green-500"
+                    : "border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {selectedDeliveryMethod === "deliver" && (
+                  <CheckCircle className="w-4 h-4 text-white" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Pickup Option */}
+          <div
+            onClick={() => setSelectedDeliveryMethod("pickup")}
+            className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+              selectedDeliveryMethod === "pickup" ? "bg-green-50 dark:bg-green-900/20" : ""
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <Package className="w-6 h-6 text-blue-600" />
+                <div>
+                  <span className="text-gray-900 dark:text-white font-medium block">
+                    Pick Up
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Pick up directly from the farm (No shipping fee)
+                  </span>
+                </div>
+              </div>
+              <div
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  selectedDeliveryMethod === "pickup"
+                    ? "border-green-500 bg-green-500"
+                    : "border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {selectedDeliveryMethod === "pickup" && (
+                  <CheckCircle className="w-4 h-4 text-white" />
+                )}
+              </div>
+            </div>
+            {selectedDeliveryMethod === "pickup" && (
+              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  Pickup Notes (Optional)
+                </label>
+                <textarea
+                  value={pickupNotes}
+                  onChange={(e) => setPickupNotes(e.target.value)}
+                  placeholder="E.g., Preferred pickup time..."
+                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                  rows="2"
+                />
+              </div>
+            )}
           </div>
         </div>
 

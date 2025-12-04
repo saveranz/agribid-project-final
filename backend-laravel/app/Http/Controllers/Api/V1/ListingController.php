@@ -7,6 +7,7 @@ use App\Models\Listing;
 use App\Traits\ApiResponses;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 
 class ListingController extends Controller
@@ -16,14 +17,14 @@ class ListingController extends Controller
     public function index(Request $request)
     {
         // Cache key based on request parameters
-        $cacheKey = 'listings_' . md5(json_encode($request->all()) . auth()->id());
+        $cacheKey = 'listings_' . md5(json_encode($request->all()) . (Auth::id() ?? 'guest'));
         
         // Return cached response if available (cache for 1 minute)
         $cachedResponse = cache()->remember($cacheKey, 60, function () use ($request) {
             return $this->fetchListings($request);
         });
         
-        return $this->okResponse($cachedResponse['listings'], $cachedResponse['message']);
+        return $this->ok($cachedResponse['message'], $cachedResponse['listings']);
     }
     
     protected function fetchListings(Request $request)
@@ -70,7 +71,9 @@ class ListingController extends Controller
         }
 
         // Use index for sorting
-        $listings = $query->orderBy('created_at', 'desc')->paginate(20);
+        $perPage = $request->input('per_page', 20);
+        $perPage = min($perPage, 200); // Max 200 items per page
+        $listings = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         $listings->getCollection()->transform(function ($listing) {
             // Defensive: handle missing relationships
@@ -79,6 +82,11 @@ class ListingController extends Controller
             $listing->category_name = ($listing->category && isset($listing->category->name)) ? $listing->category->name : 'Uncategorized';
             $listing->sold = $listing->sold_count ?? 0;
             $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
+            
+            // Ensure image_url is full URL
+            if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+                $listing->image_url = url($listing->image_url);
+            }
             
             // Add batch pricing info
             $listing->total_available = $listing->total_available_quantity;
@@ -106,6 +114,11 @@ class ListingController extends Controller
         $listing->sold = $listing->sold_count ?? 0;
         $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
         
+        // Ensure image_url is full URL
+        if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+            $listing->image_url = url($listing->image_url);
+        }
+        
         // Add batch pricing details
         $listing->total_available = $listing->total_available_quantity;
         $listing->price_range = [
@@ -131,6 +144,12 @@ class ListingController extends Controller
             $listing->discount = rand(10, 30) . '%';
             $listing->sold = $listing->sold_count ?? 0;
             $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
+            
+            // Ensure image_url is full URL
+            if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+                $listing->image_url = url($listing->image_url);
+            }
+            
             return $listing;
         });
 
@@ -154,7 +173,9 @@ class ListingController extends Controller
             });
         }
 
-        $listings = $query->latest()->paginate(20);
+        $perPage = $request->input('per_page', 20);
+        $perPage = min($perPage, 200); // Max 200 items per page
+        $listings = $query->latest()->paginate($perPage);
 
         $listings->getCollection()->transform(function ($listing) {
             $listing->bidders_count = $listing->bids->unique('buyer_id')->count();
@@ -162,6 +183,12 @@ class ListingController extends Controller
             $listing->category_name = ($listing->category && isset($listing->category->name)) ? $listing->category->name : 'Uncategorized';
             $listing->sold = $listing->sold_count ?? 0;
             $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
+            
+            // Ensure image_url is full URL
+            if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+                $listing->image_url = url($listing->image_url);
+            }
+            
             return $listing;
         });
 
@@ -185,7 +212,9 @@ class ListingController extends Controller
             });
         }
 
-        $listings = $query->latest()->paginate(20);
+        $perPage = $request->input('per_page', 20);
+        $perPage = min($perPage, 200); // Max 200 items per page
+        $listings = $query->latest()->paginate($perPage);
 
         $listings->getCollection()->transform(function ($listing) {
             $listing->bidders_count = $listing->bids->unique('buyer_id')->count();
@@ -193,6 +222,12 @@ class ListingController extends Controller
             $listing->category_name = ($listing->category && isset($listing->category->name)) ? $listing->category->name : 'Uncategorized';
             $listing->sold = $listing->sold_count ?? 0;
             $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
+            
+            // Ensure image_url is full URL
+            if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+                $listing->image_url = url($listing->image_url);
+            }
+            
             return $listing;
         });
 
@@ -355,7 +390,7 @@ class ListingController extends Controller
 
         // Insert all batches at once
         if (!empty($batches)) {
-            \DB::table('stock_batches')->insert($batches);
+            DB::table('stock_batches')->insert($batches);
         }
     }
 
@@ -428,6 +463,11 @@ class ListingController extends Controller
             $listing->category_name = ($listing->category && isset($listing->category->name)) ? $listing->category->name : 'Uncategorized';
             $listing->sold = $listing->sold_count ?? 0;
             $listing->rating = $listing->rating ? (float)$listing->rating : 0.0;
+            
+            // Ensure image_url is full URL
+            if ($listing->image_url && !str_starts_with($listing->image_url, 'http')) {
+                $listing->image_url = url($listing->image_url);
+            }
             
             // Add batch pricing info
             $listing->total_available = $listing->total_available_quantity;

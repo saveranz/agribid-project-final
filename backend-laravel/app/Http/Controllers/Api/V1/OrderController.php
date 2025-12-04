@@ -23,6 +23,16 @@ class OrderController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->paginate(20);
 
+            // Transform listing image URLs to full URLs
+            $orders->getCollection()->transform(function ($order) {
+                if ($order->listing && $order->listing->image_url) {
+                    if (!str_starts_with($order->listing->image_url, 'http')) {
+                        $order->listing->image_url = url($order->listing->image_url);
+                    }
+                }
+                return $order;
+            });
+
             return response()->json([
                 'success' => true,
                 'data' => $orders,
@@ -46,6 +56,16 @@ class OrderController extends Controller
                 ->where('seller_id', $request->user()->id)
                 ->orderBy('created_at', 'desc')
                 ->paginate(20);
+
+            // Transform listing image URLs to full URLs
+            $orders->getCollection()->transform(function ($order) {
+                if ($order->listing && $order->listing->image_url) {
+                    if (!str_starts_with($order->listing->image_url, 'http')) {
+                        $order->listing->image_url = url($order->listing->image_url);
+                    }
+                }
+                return $order;
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -84,6 +104,13 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            // Transform listing image URL to full URL
+            if ($order->listing && $order->listing->image_url) {
+                if (!str_starts_with($order->listing->image_url, 'http')) {
+                    $order->listing->image_url = url($order->listing->image_url);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $order,
@@ -107,6 +134,8 @@ class OrderController extends Controller
             'quantity' => 'required|integer|min:1',
             'unit' => 'required|string|max:20',
             'payment_method' => 'required|in:cod,agribidpay,gcash,paylater',
+            'delivery_method' => 'required|in:deliver,pickup',
+            'pickup_notes' => 'nullable|string|max:500',
             'message_for_seller' => 'nullable|string|max:500',
             'voucher_code' => 'nullable|string|max:50',
             'price_per_unit' => 'required|numeric|min:0',
@@ -186,6 +215,8 @@ class OrderController extends Controller
                 'delivery_province' => $user->province ?? '',
                 'delivery_postal_code' => $user->postal_code ?? '',
                 'payment_method' => $validated['payment_method'],
+                'delivery_method' => $validated['delivery_method'],
+                'pickup_notes' => $validated['pickup_notes'] ?? null,
                 'shipping_option' => 'standard',
                 'estimated_delivery_start' => Carbon::now()->addDays(3),
                 'estimated_delivery_end' => Carbon::now()->addDays(7),

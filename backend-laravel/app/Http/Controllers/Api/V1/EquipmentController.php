@@ -18,7 +18,19 @@ class EquipmentController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Equipment::with(['owner'])->available();
+        // Cache equipment for 2 minutes
+        $cacheKey = 'equipment_' . md5(json_encode($request->all()));
+        
+        $result = cache()->remember($cacheKey, 120, function () use ($request) {
+            return $this->fetchEquipment($request);
+        });
+        
+        return $this->success($result['data'], $result['message']);
+    }
+    
+    protected function fetchEquipment(Request $request)
+    {
+        $query = Equipment::with(['owner:id,name'])->where('is_active', true);
 
         // Filter by type
         if ($request->has('type')) {
@@ -38,6 +50,8 @@ class EquipmentController extends Controller
 
         // Transform data
         $equipment->getCollection()->transform(function ($item) {
+            $specs = is_string($item->specifications) ? json_decode($item->specifications, true) : $item->specifications;
+            
             return [
                 'id' => $item->id,
                 'name' => $item->name,
@@ -49,13 +63,64 @@ class EquipmentController extends Controller
                 'available' => $item->availability_status === 'available',
                 'availability_status' => $item->availability_status,
                 'location' => $item->location,
-                'image' => $item->image_url ?? 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop',
-                'rating' => 4.5, // TODO: Calculate from reviews
-                'reviews' => 0, // TODO: Count reviews
+                'image' => $item->image_url ? url($item->image_url) : 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop',
+                'rating' => $specs['rating'] ?? 4.5,
+                'reviews' => $specs['reviews'] ?? 0,
+                'nextAvailable' => $specs['next_available'] ?? null,
             ];
         });
 
-        return $this->success($equipment, 'Equipment retrieved successfully');
+        return [
+            'data' => $equipment,
+            'message' => 'Equipment retrieved successfully'
+        ];
+    }
+
+    /**
+     * Store a newly created equipment.
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'required|string',
+            'type' => 'required|string|in:Tractor,Harvester,Planter,Irrigation,Sprayer,Cultivator,Other',
+            'rate_per_day' => 'required|numeric|min:0',
+            'location' => 'required|string|max:255',
+            'image' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:5120', // 5MB max
+            'image_url' => 'nullable|string',
+            'specifications' => 'nullable|array',
+        ]);
+
+        $imageUrl = null;
+        
+        // Handle file upload
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $image->move(public_path('storage/equipment'), $filename);
+            $imageUrl = '/storage/equipment/' . $filename;
+        } elseif ($request->has('image_url')) {
+            $imageUrl = $request->image_url;
+        }
+
+        $equipment = Equipment::create([
+            'owner_id' => Auth::id(),
+            'name' => $request->name,
+            'description' => $request->description,
+            'type' => $request->type,
+            'rate_per_day' => $request->rate_per_day,
+            'location' => $request->location,
+            'image_url' => $imageUrl,
+            'specifications' => $request->specifications ?? [],
+            'availability_status' => 'available',
+            'is_active' => true,
+        ]);
+
+        // Clear equipment cache
+        cache()->forget('equipment_*');
+
+        return $this->success($equipment, 'Equipment added successfully', 201);
     }
 
     /**
@@ -76,9 +141,83 @@ class EquipmentController extends Controller
             'availability_status' => $equipment->availability_status,
             'location' => $equipment->location,
             'specifications' => $equipment->specifications,
-            'image_url' => $equipment->image_url,
+            'image_url' => $equipment->image_url ? url($equipment->image_url) : null,
             'is_active' => $equipment->is_active,
         ], 'Equipment details retrieved successfully');
+    }
+
+    /**
+     * Update the specified equipment.
+     */
+    public function update(Request $request, string $id)
+    {
+        $equipment = Equipment::findOrFail($id);
+
+        // Check if user owns this equipment
+        if ($equipment->owner_id !== Auth::id()) {
+            return $this->error('Unauthorized to update this equipment', 403);
+        }
+
+        $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'description' => 'sometimes|string',
+            'type' => 'sometimes|string|in:Tractor,Harvester,Planter,Irrigation,Sprayer,Cultivator,Other',
+            'rate_per_day' => 'sometimes|numeric|min:0',
+            'location' => 'sometimes|string|max:255',
+            'image' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:5120', // 5MB max
+            'image_url' => 'nullable|string',
+            'specifications' => 'nullable|array',
+            'availability_status' => 'sometimes|in:available,rented,maintenance',
+            'is_active' => 'sometimes|boolean',
+        ]);
+
+        $updateData = $request->only([
+            'name', 'description', 'type', 'rate_per_day', 
+            'location', 'specifications', 
+            'availability_status', 'is_active'
+        ]);
+
+        // Handle file upload
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($equipment->image_url && file_exists(public_path($equipment->image_url))) {
+                unlink(public_path($equipment->image_url));
+            }
+            
+            $image = $request->file('image');
+            $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $image->move(public_path('storage/equipment'), $filename);
+            $updateData['image_url'] = '/storage/equipment/' . $filename;
+        } elseif ($request->has('image_url')) {
+            $updateData['image_url'] = $request->image_url;
+        }
+
+        $equipment->update($updateData);
+
+        // Clear equipment cache
+        cache()->forget('equipment_*');
+
+        return $this->success($equipment, 'Equipment updated successfully');
+    }
+
+    /**
+     * Remove the specified equipment.
+     */
+    public function destroy(string $id)
+    {
+        $equipment = Equipment::findOrFail($id);
+
+        // Check if user owns this equipment
+        if ($equipment->owner_id !== Auth::id()) {
+            return $this->error('Unauthorized to delete this equipment', 403);
+        }
+
+        $equipment->delete();
+
+        // Clear equipment cache
+        cache()->forget('equipment_*');
+
+        return $this->success(null, 'Equipment deleted successfully');
     }
 
     /**
@@ -174,5 +313,37 @@ class EquipmentController extends Controller
         });
 
         return $this->success($rentals, 'User rentals retrieved successfully');
+    }
+
+    /**
+     * Get farmer's own equipment listings.
+     */
+    public function myEquipment()
+    {
+        $equipment = Equipment::where('owner_id', Auth::id())
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $equipment = $equipment->map(function ($item) {
+            $specs = is_string($item->specifications) ? json_decode($item->specifications, true) : $item->specifications;
+            
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'description' => $item->description,
+                'type' => $item->type,
+                'rate_per_day' => $item->rate_per_day,
+                'rate' => '₱' . number_format($item->rate_per_day, 2),
+                'availability_status' => $item->availability_status,
+                'location' => $item->location,
+                'image_url' => $item->image_url,
+                'image' => $item->image_url ? url($item->image_url) : 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop',
+                'is_active' => $item->is_active,
+                'specifications' => $specs,
+                'created_at' => $item->created_at->format('M d, Y'),
+            ];
+        });
+
+        return $this->success($equipment, 'Your equipment retrieved successfully');
     }
 }
