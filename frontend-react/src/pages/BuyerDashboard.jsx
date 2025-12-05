@@ -514,6 +514,11 @@ const BuyerDashboard = () => {
         return [...prev, cartItem];
       }
     });
+
+    // Navigate to cart page after adding item
+    setTimeout(() => {
+      setActiveTab('cart');
+    }, 100);
   };
 
   const removeFromCart = (itemId) => {
