@@ -44,6 +44,7 @@ import { getMyBids } from "../api/Bid";
 import { getNotifications } from "../api/Notification";
 import { getFavorites, addFavorite, removeFavorite } from "../api/Favorite";
 import { logout } from "../api/Auth";
+import * as CartAPI from "../api/Cart";
 
 const BuyerDashboard = () => {
   const navigate = useNavigate();
@@ -69,6 +70,7 @@ const BuyerDashboard = () => {
   const [favorites, setFavorites] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [cart, setCart] = useState([]);
+  const [selectedCartItems, setSelectedCartItems] = useState(new Set());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -274,6 +276,31 @@ const BuyerDashboard = () => {
         const favs = favoritesResponse.value.data.data || [];
         setFavorites(favs);
         setFavoriteIds(new Set(favs.map(f => f.listing_id)));
+      }
+
+      // Load cart from database
+      try {
+        const cartResponse = await CartAPI.getCart();
+        if (cartResponse.data?.success) {
+          const cartData = cartResponse.data.data || [];
+          // Transform cart data to match frontend format
+          const transformedCart = cartData.map(item => ({
+            id: item.listing_id,
+            cartItemId: item.id,
+            name: item.listing?.name,
+            image: item.listing?.image_url || '/placeholder.jpg',
+            seller: item.listing?.user?.name || 'Unknown Seller',
+            price: parseFloat(item.price),
+            quantity: item.quantity,
+            unit: item.unit,
+            rawQuantity: item.listing?.quantity || 0,
+            stock: item.listing?.quantity || 0,
+            addedAt: item.created_at
+          }));
+          setCart(transformedCart);
+        }
+      } catch (error) {
+        console.error('Error loading cart:', error);
       }
       
       // Load secondary data last
@@ -482,57 +509,128 @@ const BuyerDashboard = () => {
   };
 
   // Cart functions
-  const addToCart = (item, quantity, unit) => {
-    const cartItem = {
-      id: item.id,
-      name: item.name,
-      image: item.image,
-      seller: item.seller,
-      price: item.price,
-      quantity: quantity,
-      unit: unit || item.unit,
-      rawQuantity: item.rawQuantity,
-      stock: item.stock,
-      addedAt: new Date().toISOString()
-    };
+  const addToCart = async (item, quantity, unit, price) => {
+    try {
+      const response = await CartAPI.addToCart({
+        listing_id: item.id,
+        quantity: quantity,
+        unit: unit || item.unit,
+        price: price || item.price
+      });
 
-    setCart(prev => {
-      // Check if item already exists in cart
-      const existingIndex = prev.findIndex(cartItem => cartItem.id === item.id);
-      
-      if (existingIndex !== -1) {
-        // Update quantity if item exists
-        const newCart = [...prev];
-        newCart[existingIndex].quantity += quantity;
-        setToastMessage(`${item.name} quantity updated in cart`);
+      if (response.data?.success) {
+        const cartData = response.data.data;
+        const cartItem = {
+          id: cartData.listing_id,
+          cartItemId: cartData.id,
+          name: cartData.listing?.name || item.name,
+          image: cartData.listing?.image_url || item.image,
+          seller: cartData.listing?.user?.name || item.seller,
+          price: parseFloat(cartData.price),
+          quantity: cartData.quantity,
+          unit: cartData.unit,
+          rawQuantity: cartData.listing?.quantity || item.rawQuantity,
+          stock: cartData.listing?.quantity || item.stock,
+          addedAt: cartData.created_at
+        };
+
+        setCart(prev => {
+          const existingIndex = prev.findIndex(c => c.id === cartItem.id);
+          if (existingIndex !== -1) {
+            const newCart = [...prev];
+            newCart[existingIndex] = cartItem;
+            setToastMessage(`${cartItem.name} quantity updated in cart`);
+            return newCart;
+          } else {
+            setToastMessage(`${quantity} ${unit || item.unit} of ${cartItem.name}`);
+            return [...prev, cartItem];
+          }
+        });
+
         setShowToast(true);
-        return newCart;
-      } else {
-        // Add new item
-        setToastMessage(`${quantity} ${unit || item.unit} of ${item.name}`);
-        setShowToast(true);
-        return [...prev, cartItem];
+        
+        // Navigate to cart page after adding item
+        setTimeout(() => {
+          setActiveTab('cart');
+        }, 100);
       }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      alert('Failed to add item to cart. Please try again.');
+    }
+  };
+
+  const removeFromCart = async (itemId) => {
+    const cartItem = cart.find(item => item.id === itemId);
+    if (!cartItem) return;
+
+    try {
+      await CartAPI.removeFromCart(cartItem.cartItemId);
+      setCart(prev => prev.filter(item => item.id !== itemId));
+      // Remove from selected items if it was selected
+      setSelectedCartItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error removing from cart:', error);
+      alert('Failed to remove item from cart. Please try again.');
+    }
+  };
+
+  // Checkbox handlers
+  const toggleSelectAll = () => {
+    if (selectedCartItems.size === cart.length) {
+      setSelectedCartItems(new Set());
+    } else {
+      setSelectedCartItems(new Set(cart.map(item => item.id)));
+    }
+  };
+
+  const toggleSelectItem = (itemId) => {
+    setSelectedCartItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
     });
-
-    // Navigate to cart page after adding item
-    setTimeout(() => {
-      setActiveTab('cart');
-    }, 100);
   };
 
-  const removeFromCart = (itemId) => {
-    setCart(prev => prev.filter(item => item.id !== itemId));
+  const getSelectedItems = () => {
+    return cart.filter(item => selectedCartItems.has(item.id));
   };
 
-  const updateCartQuantity = (itemId, newQuantity) => {
-    setCart(prev => prev.map(item => 
-      item.id === itemId ? { ...item, quantity: newQuantity } : item
-    ));
+  const getSelectedTotal = () => {
+    return getSelectedItems().reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
   };
 
-  const clearCart = () => {
-    setCart([]);
+  const updateCartQuantity = async (itemId, newQuantity) => {
+    const cartItem = cart.find(item => item.id === itemId);
+    if (!cartItem) return;
+
+    try {
+      await CartAPI.updateCartItem(cartItem.cartItemId, newQuantity);
+      setCart(prev => prev.map(item => 
+        item.id === itemId ? { ...item, quantity: newQuantity } : item
+      ));
+    } catch (error) {
+      console.error('Error updating cart quantity:', error);
+      alert('Failed to update quantity. Please try again.');
+    }
+  };
+
+  const clearCart = async () => {
+    try {
+      await CartAPI.clearCart();
+      setCart([]);
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      alert('Failed to clear cart. Please try again.');
+    }
   };
 
   const handleLogout = async () => {
@@ -2247,11 +2345,37 @@ const BuyerDashboard = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Cart Items */}
                     <div className="lg:col-span-2 space-y-4">
+                      {/* Select All Header */}
+                      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={cart.length > 0 && selectedCartItems.size === cart.length}
+                            onChange={toggleSelectAll}
+                            className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer"
+                          />
+                          <span className="font-semibold text-gray-900 dark:text-white">
+                            Select All ({cart.length} {cart.length === 1 ? 'item' : 'items'})
+                          </span>
+                        </label>
+                      </div>
+
                       {cart.map((item, index) => {
-                        const itemTotal = item.price * item.quantity;
+                        const itemTotal = (item.price || 0) * (item.quantity || 1);
+                        const isSelected = selectedCartItems.has(item.id);
                         return (
-                          <div key={item.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                          <div key={item.id} className={`bg-white dark:bg-gray-800 rounded-xl p-4 md:p-6 border-2 transition-all ${isSelected ? 'border-green-500' : 'border-gray-200 dark:border-gray-700'}`}>
                             <div className="flex gap-4">
+                              {/* Checkbox */}
+                              <div className="flex items-start pt-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectItem(item.id)}
+                                  className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer"
+                                />
+                              </div>
+
                               {/* Product Image */}
                               <img
                                 src={item.image}
@@ -2275,7 +2399,7 @@ const BuyerDashboard = () => {
                                       ₱{itemTotal.toLocaleString('en-PH', {minimumFractionDigits: 2})}
                                     </span>
                                     <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
-                                      ₱{item.price.toFixed(2)}/{item.unit}
+                                      ₱{(item.price || 0).toFixed(2)}/{item.unit}
                                     </span>
                                   </div>
 
@@ -2343,8 +2467,8 @@ const BuyerDashboard = () => {
                         
                         <div className="space-y-3 mb-6">
                           <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                            <span>Subtotal ({cart.length} items)</span>
-                            <span>₱{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}</span>
+                            <span>Subtotal ({selectedCartItems.size} selected {selectedCartItems.size === 1 ? 'item' : 'items'})</span>
+                            <span>₱{getSelectedTotal().toLocaleString('en-PH', {minimumFractionDigits: 2})}</span>
                           </div>
                           <div className="flex justify-between text-gray-600 dark:text-gray-400">
                             <span>Shipping Fee</span>
@@ -2354,7 +2478,7 @@ const BuyerDashboard = () => {
                             <div className="flex justify-between items-center">
                               <span className="text-lg font-semibold text-gray-900 dark:text-white">Total</span>
                               <span className="text-2xl font-bold text-green-600">
-                                ₱{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}
+                                ₱{getSelectedTotal().toLocaleString('en-PH', {minimumFractionDigits: 2})}
                               </span>
                             </div>
                           </div>
@@ -2362,16 +2486,21 @@ const BuyerDashboard = () => {
 
                         <button
                           onClick={() => {
+                            if (selectedCartItems.size === 0) {
+                              alert('Please select items to checkout');
+                              return;
+                            }
                             navigate('/checkout', {
                               state: {
-                                items: cart,
-                                subtotal: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                                items: getSelectedItems(),
+                                subtotal: getSelectedTotal()
                               }
                             });
                           }}
-                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl mb-3"
+                          disabled={selectedCartItems.size === 0}
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Proceed to Checkout
+                          Proceed to Checkout {selectedCartItems.size > 0 && `(${selectedCartItems.size})`}
                         </button>
 
                         <button
@@ -3662,7 +3791,12 @@ const BuyerDashboard = () => {
               <div className="space-y-3">
                 <button
                   onClick={() => {
-                    addToCart(selectedItem, orderQuantity, selectedUnit);
+                    // Create a cart item with the calculated price
+                    const itemWithPrice = {
+                      ...selectedItem,
+                      price: pricePerUnit
+                    };
+                    addToCart(itemWithPrice, orderQuantity, selectedUnit);
                     setShowUnitSelectionModal(false);
                   }}
                   className="group w-full bg-white dark:bg-gray-700 border-2 border-green-600 dark:border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-gray-600 py-3.5 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg hover:scale-[1.02]"
