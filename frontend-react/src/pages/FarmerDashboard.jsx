@@ -43,7 +43,7 @@ const FarmerDashboard = () => {
   const [produceFilter, setProduceFilter] = useState("auction"); // auction, direct_buy
   const [categoryFilter, setCategoryFilter] = useState(null); // null means show all categories
   const [orderFilter, setOrderFilter] = useState("to_pay"); // to_pay, to_ship, in_transit, to_receive, completed, for_pickup
-  const [orderTab, setOrderTab] = useState("to_ship"); // to_ship, to_deliver, for_pickup
+  const [orderViewTab, setOrderViewTab] = useState("all"); // all, pickup
   const [activeEditTab, setActiveEditTab] = useState('basic'); // basic, details, pricing, farm
   const [sellerOrders, setSellerOrders] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -1333,16 +1333,26 @@ const FarmerDashboard = () => {
                 <span className="text-xs text-gray-500 dark:text-gray-400">List crops for bidding</span>
               </div>
             </button>
-            <NavLink
-              to="/rental-equipment"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium"
+            <button
+              onClick={() => setActiveTab("equipment")}
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium w-full text-left cursor-pointer"
             >
               <Tractor className="w-5 h-5" />
               <div>
                 <span className="block">Rental Equipment</span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">List machinery for rent</span>
               </div>
-            </NavLink>
+            </button>
+            <button
+              onClick={() => setActiveTab("orders")}
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-orange-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium w-full text-left cursor-pointer"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              <div>
+                <span className="block">Orders</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Manage your orders</span>
+              </div>
+            </button>
             <button
               onClick={handleLeaveFeedback}
               className="flex items-center space-x-3 px-4 py-3 text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors font-medium w-full text-left"
@@ -1771,708 +1781,52 @@ const FarmerDashboard = () => {
               </div>
             </div>
           </div>
-        ) : (
-          /* Tabbed Content for other views */
+        ) : activeTab === "orders" ? (
+          /* Orders Management - No Tab Navigation */
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-8 flex-1 flex flex-col overflow-hidden">
-          {/* Tab Navigation */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <button
-              onClick={() => setActiveTab("produce")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "produce"
-                  ? "text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <Package className="w-4 h-4 inline mr-2" />
-              Produce Listings
-            </button>
-            <button
-              onClick={() => setActiveTab("equipment")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "equipment"
-                  ? "text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <Tractor className="w-4 h-4 inline mr-2" />
-              Equipment Rentals
-            </button>
-            <button
-              onClick={() => setActiveTab("orders")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "orders"
-                  ? "text-orange-600 dark:text-orange-400 border-b-2 border-orange-600 dark:border-orange-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4 inline mr-2" />
-              Orders
-            </button>
-
-            <button
-              onClick={() => setActiveTab("auction_sales")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "auction_sales"
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <Award className="w-4 h-4 inline mr-2" />
-              Auction Sales
-            </button>
-
-            <button
-              onClick={() => setActiveTab("revenue")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "revenue"
-                  ? "text-yellow-600 dark:text-yellow-400 border-b-2 border-yellow-600 dark:border-yellow-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <DollarSign className="w-4 h-4 inline mr-2" />
-              Revenue & Payouts
-            </button>
-            <button
-              onClick={() => setActiveTab("archived")}
-              className={`px-6 py-4 font-semibold transition-colors text-base ${
-                activeTab === "archived"
-                  ? "text-amber-600 dark:text-amber-400 border-b-2 border-amber-600 dark:border-amber-400"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              }`}
-            >
-              <Archive className="w-4 h-4 inline mr-2" />
-              Archived Products
-            </button>
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* Produce Listings Tab */}
-            {activeTab === "produce" && (
-              <div>
-                {/* Header with Add Button */}
-                <div className="mb-6 flex items-center justify-between">
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Products</h1>
-                  <button
-                    onClick={() => setShowPostModal(true)}
-                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2 shadow-lg"
-                  >
-                    <Package className="w-5 h-5" />
-                    <span>Add New Product</span>
-                  </button>
-                </div>
-
-                {/* Filter Buttons */}
-                <div className="mb-6 flex gap-3 flex-wrap items-center">
-                  <button
-                    onClick={() => setProduceFilter("auction")}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      produceFilter === "auction"
-                        ? "bg-orange-600 text-white"
-                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    🔥 Auction
-                  </button>
-                  <button
-                    onClick={() => setProduceFilter("direct_buy")}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      produceFilter === "direct_buy"
-                        ? "bg-green-600 text-white"
-                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    🛒 Direct Buy
-                  </button>
-                  
-                  {/* Category Filter Indicator */}
-                  {categoryFilter && (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg">
-                      <span className="text-sm font-medium">
-                        Category: {categories.find(c => c.id === categoryFilter)?.name || 'Unknown'}
-                      </span>
-                      <button
-                        onClick={() => setCategoryFilter(null)}
-                        className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-1 transition-colors"
-                        title="Clear category filter"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Product
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Listing Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        {produceFilter === 'direct_buy' ? 'Price' : 'Starting Bid'}
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        {produceFilter === 'direct_buy' ? 'Stock Status' : 'Current Bid'}
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        {produceFilter === 'direct_buy' ? 'Available' : 'Expires In'}
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {loading ? (
-                      <tr>
-                        <td colSpan="8" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                          Loading your listings...
-                        </td>
-                      </tr>
-                    ) : producePosts.filter(post => {
-                        const matchesListingType = post.listing_type === produceFilter;
-                        const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
-                        return matchesListingType && matchesCategory;
-                      }).length === 0 ? (
-                      <tr>
-                        <td colSpan="9" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                          No {produceFilter === "auction" ? "auction" : "direct buy"} listings found{categoryFilter ? ' in this category' : ''}. {!categoryFilter && "Click \"Post New Produce\" to get started!"}
-                        </td>
-                      </tr>
-                    ) : (
-                      producePosts
-                        .filter(post => {
-                          const matchesListingType = post.listing_type === produceFilter;
-                          const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
-                          return matchesListingType && matchesCategory;
-                        })
-                        .map((post) => {
-                        const expiresAt = new Date(post.auction_end);
-                        const now = new Date();
-                        const diffTime = expiresAt - now;
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        const expiresIn = diffDays > 0 ? `${diffDays} days` : 'Expired';
-                        
-                        return (
-                          <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="flex-shrink-0 h-12 w-12 mr-4">
-                                  <img
-                                    className="h-12 w-12 rounded-lg object-cover"
-                                    src={post.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
-                                    alt={post.name}
-                                    onError={(e) => {
-                                      console.log('Image load error for:', post.name, 'URL:', post.image_url);
-                                      e.target.onerror = null;
-                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
-                                    }}
-                                  />
-                                </div>
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                    {post.name}
-                                  </div>
-                                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
-                                    <MapPin className="w-3 h-3 mr-1" />
-                                    {post.location}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {post.type}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              <div className="flex items-center">
-                                {post.listing_type === 'auction' ? (
-                                  <>
-                                    <span className="text-orange-600 text-lg mr-1">🔥</span>
-                                    <span>Auction</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-green-600 text-lg mr-1">🛒</span>
-                                    <span>Direct Buy</span>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {post.quantity} {post.unit}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {post.listing_type === 'auction' ? (
-                                <div className="font-semibold">₱{parseFloat(post.starting_bid || 0).toLocaleString()}</div>
-                              ) : (
-                                <div className="font-semibold text-green-600 dark:text-green-400">₱{parseFloat(post.buy_now_price || 0).toLocaleString()}</div>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {post.listing_type === 'auction' ? (
-                                <>
-                                  <div className="text-sm font-semibold text-green-600 dark:text-green-400">
-                                    ₱{parseFloat(post.current_bid || post.starting_bid || 0).toLocaleString()}
-                                  </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                                    <Users className="w-3 h-3 mr-1" />
-                                    {post.bidders_count || 0} bidders
-                                  </div>
-                                </>
-                              ) : (
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                  post.quantity > 0 
-                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                }`}>
-                                  {post.quantity > 0 ? 'In Stock' : 'Out of Stock'}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {post.listing_type === 'auction' ? expiresIn : `${post.quantity} ${post.unit}`}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span
-                                className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-                                  post.approval_status === 'approved' ? post.status : post.approval_status
-                                )}`}
-                              >
-                                {post.approval_status === 'approved' ? post.status : post.approval_status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <div className="flex space-x-2">
-                                <button
-                                  onClick={() => handleManageStock(post)}
-                                  className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
-                                  title="Manage Stock Batches"
-                                >
-                                  <Package className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleEditClick(post)}
-                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                                  title="Edit"
-                                >
-                                  <Edit className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteClick(post)}
-                                  className="text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300"
-                                  title="Archive"
-                                >
-                                  <Archive className="w-5 h-5" />
-                                </button>
-                                <button
-                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                                  title="View Bidders"
-                                  onClick={() => handleViewBidders(post)}
-                                >
-                                  <Eye className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+            {/* Orders Page Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <ShoppingCart className="w-6 h-6 mr-2 text-orange-600" />
+                  Order Management
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Track and manage your orders through each stage of fulfillment
+                </p>
               </div>
+
+              {/* Order View Tabs */}
+              <div className="flex space-x-2 border-b border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setOrderViewTab("all")}
+                  className={`px-6 py-3 font-semibold transition-colors text-base ${
+                    orderViewTab === "all"
+                      ? "text-orange-600 dark:text-orange-400 border-b-2 border-orange-600 dark:border-orange-400"
+                      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  }`}
+                >
+                  <ShoppingCart className="w-4 h-4 inline mr-2" />
+                  All Orders
+                </button>
+                <button
+                  onClick={() => setOrderViewTab("pickup")}
+                  className={`px-6 py-3 font-semibold transition-colors text-base ${
+                    orderViewTab === "pickup"
+                      ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400"
+                      : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  }`}
+                >
+                  <Package className="w-4 h-4 inline mr-2" />
+                  Pickup Orders
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* Equipment Rentals Tab */}
-            {activeTab === "equipment" && (
-              <div>
-                <div className="mb-6 flex justify-between items-center">
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">My Equipment</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      Manage your equipment available for rental
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowAddEquipmentModal(true)}
-                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span>Add Equipment</span>
-                  </button>
-                </div>
-
-                {loading ? (
-                  <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-                  </div>
-                ) : myEquipment.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <Tractor className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-600 dark:text-gray-400 mb-4">No equipment added yet</p>
-                    <button
-                      onClick={() => setShowAddEquipmentModal(true)}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      Add Your First Equipment
-                    </button>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 dark:bg-gray-900">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Equipment
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Type
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Rate/Day
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Status
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {myEquipment.map((equipment) => (
-                          <tr key={equipment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center">
-                                <div className="flex-shrink-0 h-12 w-12 mr-4">
-                                  <img
-                                    className="h-12 w-12 rounded-lg object-cover"
-                                    src={equipment.image}
-                                    alt={equipment.name}
-                                    onError={(e) => {
-                                      e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=300&h=200&fit=crop';
-                                    }}
-                                  />
-                                </div>
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                    {equipment.name}
-                                  </div>
-                                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
-                                    <MapPin className="w-3 h-3 mr-1" />
-                                    {equipment.location}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {equipment.type}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-purple-600 dark:text-purple-400">
-                              {equipment.rate}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span
-                                className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  equipment.availability_status === 'available' 
-                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                    : equipment.availability_status === 'rented'
-                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                                    : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
-                                }`}
-                              >
-                                {equipment.availability_status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <div className="flex space-x-2">
-                                <button
-                                  onClick={() => openEditEquipmentModal(equipment)}
-                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                                  title="Edit"
-                                >
-                                  <Edit className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteEquipment(equipment.id)}
-                                  className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                                  title="Delete"
-                                >
-                                  <Archive className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Auction Sales Tab */}
-            {activeTab === "auction_sales" && (
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                    Auction Sales & Payment Tracking
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Manage winning bids and track buyer payments
-                  </p>
-                </div>
-
-                {/* Winning Bids List */}
-                <div className="space-y-4">
-                  {winningBids.length === 0 ? (
-                    <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
-                      <Award className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No winning bids yet</h3>
-                      <p className="text-gray-500 dark:text-gray-400">
-                        Winning auction bids will appear here
-                      </p>
-                    </div>
-                  ) : (
-                    winningBids.map((bid) => (
-                      <div key={bid.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-blue-200 dark:border-blue-800">
-                        {/* Bid Header */}
-                        <div className="px-6 py-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4">
-                              <Award className="w-5 h-5 text-blue-600" />
-                              <div>
-                                <h4 className="font-semibold text-gray-900 dark:text-white">{bid.listing?.name || "Product"}</h4>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                  Buyer: <span className="font-medium">{bid.buyer?.name || "N/A"}</span>
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                bid.payment_status === "paid" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
-                                bid.payment_status === "partial" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" :
-                                "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-                              }`}>
-                                {bid.payment_status === "paid" ? "✅ Paid in Full" :
-                                 bid.payment_status === "partial" ? "⏳ Partially Paid" :
-                                 "❌ Unpaid"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Bid Details */}
-                        <div className="p-6">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
-                              <p className="text-lg font-bold text-gray-900 dark:text-white">
-                                ₱{parseFloat(bid.winning_bid_amount || bid.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                              </p>
-                            </div>
-                            
-                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
-                              <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                ₱{parseFloat(bid.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                              </p>
-                            </div>
-                            
-                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining Balance</p>
-                              <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                                ₱{parseFloat(bid.remaining_balance || (bid.winning_bid_amount || bid.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                              </p>
-                            </div>
-                            
-                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Payment Due Date</p>
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {bid.payment_deadline ? new Date(bid.payment_deadline).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : "Not set"}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Contact Info */}
-                          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
-                            <p className="text-sm text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">Contact:</span> {bid.buyer?.email || "N/A"}
-                              {bid.buyer?.phone && <span className="ml-4">Phone: {bid.buyer.phone}</span>}
-                            </p>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex flex-wrap gap-3">
-                            <button 
-                              onClick={() => {
-                                setSelectedBidForPayment(bid);
-                                setPaymentFormData({
-                                  ...paymentFormData,
-                                  payment_type: 'full',
-                                  amount: bid.remaining_balance || bid.winning_bid_amount || bid.bid_amount
-                                });
-                                setShowPaymentModal(true);
-                              }}
-                              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center"
-                            >
-                              <Banknote className="w-4 h-4 mr-2" />
-                              Record Payment
-                            </button>
-                            <button 
-                              onClick={() => {
-                                setSelectedBidForHistory(bid);
-                                setShowPaymentHistoryModal(true);
-                              }}
-                              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                              View Payment History
-                            </button>
-                            <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                              Contact Buyer
-                            </button>
-                          </div>
-
-                          {/* Recent Payments */}
-                          {bid.payments && bid.payments.length > 0 && (
-                            <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recent Payments:</p>
-                              <div className="space-y-2">
-                                {bid.payments.slice(0, 3).map((payment, idx) => (
-                                  <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700/30 rounded p-2">
-                                    <span className="text-gray-600 dark:text-gray-400">
-                                      {payment.payment_type === 'downpayment' ? '💰 Downpayment' : 
-                                       payment.payment_type === 'balance' ? '💵 Balance Payment' : 
-                                       '✅ Full Payment'}
-                                    </span>
-                                    <span className="font-medium text-gray-900 dark:text-white">
-                                      ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                    </span>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Revenue & Payouts Tab */}
-            {activeTab === "revenue" && (
-              <div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Total Revenue</h3>
-                      <DollarSign className="w-8 h-8" />
-                    </div>
-                    <p className="text-4xl font-bold mb-2">{stats.totalRevenue}</p>
-                    <p className="text-sm opacity-90">All-time earnings</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-6 text-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Pending Payout</h3>
-                      <Clock className="w-8 h-8" />
-                    </div>
-                    <p className="text-4xl font-bold mb-2">{stats.pendingPayout}</p>
-                    <p className="text-sm opacity-90">Processing</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Total Sales</h3>
-                      <CheckCircle className="w-8 h-8" />
-                    </div>
-                    <p className="text-4xl font-bold mb-2">{stats.completedSales}</p>
-                    <p className="text-sm opacity-90">Completed transactions</p>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                    Recent Transactions
-                  </h3>
-                  <div className="space-y-4">
-                    {completedSales.map((sale) => (
-                      <div
-                        key={sale.id}
-                        className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg"
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className={`p-2 rounded-full ${
-                            sale.payoutStatus === "Paid" 
-                              ? "bg-green-100 dark:bg-green-900/20" 
-                              : "bg-yellow-100 dark:bg-yellow-900/20"
-                          }`}>
-                            {sale.payoutStatus === "Paid" ? (
-                              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                            ) : (
-                              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900 dark:text-white">
-                              {sale.name}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Sold to {sale.buyer} • {sale.soldDate}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                            {sale.soldPrice}
-                          </p>
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full ${
-                              sale.payoutStatus === "Paid"
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-                            }`}
-                          >
-                            {sale.payoutStatus}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Orders Management Tab - Shopee-Style Workflow */}
-            {activeTab === "orders" && (
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                    <ShoppingCart className="w-6 h-6 mr-2 text-orange-600" />
-                    Order Management
-                  </h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Track and manage your orders through each stage of fulfillment
-                  </p>
-                </div>
-
+            {/* Orders Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {orderViewTab === "all" && (
+            <div>
                 {/* Order Status Navigation */}
                 <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -2775,19 +2129,12 @@ const FarmerDashboard = () => {
                     </div>
                   )}
                 </div>
+              </div>
+              )}
 
-                {/* For Pickup Orders - Separate Section */}
-                <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                      <Package className="w-6 h-6 mr-2 text-indigo-600" />
-                      For Pickup Orders
-                    </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      Orders waiting for buyer pickup - no delivery required
-                    </p>
-                  </div>
-
+              {/* Pickup Orders Tab */}
+              {orderViewTab === "pickup" && (
+                <div>
                   <div className="space-y-4">
                     {sellerOrders.filter(order => order.delivery_method === "pickup").length === 0 ? (
                       <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
@@ -2952,6 +2299,671 @@ const FarmerDashboard = () => {
                           </div>
                         ))
                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeTab === "equipment" ? (
+          /* Equipment Rentals - No Tab Navigation */
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-8 flex-1 flex flex-col overflow-hidden p-6">
+            <div className="mb-6 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">My Equipment</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Manage your equipment available for rental
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddEquipmentModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Add Equipment</span>
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+              </div>
+            ) : myEquipment.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <Tractor className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                <p className="text-gray-600 dark:text-gray-400 mb-4">No equipment added yet</p>
+                <button
+                  onClick={() => setShowAddEquipmentModal(true)}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Add Your First Equipment
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Equipment
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Rate/Day
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {myEquipment.map((equipment) => (
+                      <tr key={equipment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-12 w-12 mr-4">
+                              <img
+                                className="h-12 w-12 rounded-lg object-cover"
+                                src={equipment.image}
+                                alt={equipment.name}
+                                onError={(e) => {
+                                  e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=300&h=200&fit=crop';
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {equipment.name}
+                              </div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                                <MapPin className="w-3 h-3 mr-1" />
+                                {equipment.location}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {equipment.type}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-purple-600 dark:text-purple-400">
+                          {equipment.rate}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              equipment.availability_status === 'available' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                : equipment.availability_status === 'rented'
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                                : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                            }`}
+                          >
+                            {equipment.availability_status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => openEditEquipmentModal(equipment)}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                              title="Edit"
+                            >
+                              <Edit className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEquipment(equipment.id)}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                              title="Delete"
+                            >
+                              <Archive className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Tabbed Content for other views */
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md mb-8 flex-1 flex flex-col overflow-hidden">
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <button
+              onClick={() => setActiveTab("produce")}
+              className={`px-6 py-4 font-semibold transition-colors text-base ${
+                activeTab === "produce"
+                  ? "text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              <Package className="w-4 h-4 inline mr-2" />
+              Produce Listings
+            </button>
+
+            <button
+              onClick={() => setActiveTab("auction_sales")}
+              className={`px-6 py-4 font-semibold transition-colors text-base ${
+                activeTab === "auction_sales"
+                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              <Award className="w-4 h-4 inline mr-2" />
+              Auction Sales
+            </button>
+
+            <button
+              onClick={() => setActiveTab("revenue")}
+              className={`px-6 py-4 font-semibold transition-colors text-base ${
+                activeTab === "revenue"
+                  ? "text-yellow-600 dark:text-yellow-400 border-b-2 border-yellow-600 dark:border-yellow-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              <DollarSign className="w-4 h-4 inline mr-2" />
+              Revenue & Payouts
+            </button>
+            <button
+              onClick={() => setActiveTab("archived")}
+              className={`px-6 py-4 font-semibold transition-colors text-base ${
+                activeTab === "archived"
+                  ? "text-amber-600 dark:text-amber-400 border-b-2 border-amber-600 dark:border-amber-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              <Archive className="w-4 h-4 inline mr-2" />
+              Archived Products
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* Produce Listings Tab */}
+            {activeTab === "produce" && (
+              <div>
+                {/* Header with Add Button */}
+                <div className="mb-6 flex items-center justify-between">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Products</h1>
+                  <button
+                    onClick={() => setShowPostModal(true)}
+                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2 shadow-lg"
+                  >
+                    <Package className="w-5 h-5" />
+                    <span>Add New Product</span>
+                  </button>
+                </div>
+
+                {/* Filter Buttons */}
+                <div className="mb-6 flex gap-3 flex-wrap items-center">
+                  <button
+                    onClick={() => setProduceFilter("auction")}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      produceFilter === "auction"
+                        ? "bg-orange-600 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    🔥 Auction
+                  </button>
+                  <button
+                    onClick={() => setProduceFilter("direct_buy")}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      produceFilter === "direct_buy"
+                        ? "bg-green-600 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    🛒 Direct Buy
+                  </button>
+                  
+                  {/* Category Filter Indicator */}
+                  {categoryFilter && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg">
+                      <span className="text-sm font-medium">
+                        Category: {categories.find(c => c.id === categoryFilter)?.name || 'Unknown'}
+                      </span>
+                      <button
+                        onClick={() => setCategoryFilter(null)}
+                        className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-1 transition-colors"
+                        title="Clear category filter"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Product
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Listing Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Quantity
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {produceFilter === 'direct_buy' ? 'Price' : 'Starting Bid'}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {produceFilter === 'direct_buy' ? 'Stock Status' : 'Current Bid'}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {produceFilter === 'direct_buy' ? 'Available' : 'Expires In'}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {loading ? (
+                      <tr>
+                        <td colSpan="8" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                          Loading your listings...
+                        </td>
+                      </tr>
+                    ) : producePosts.filter(post => {
+                        const matchesListingType = post.listing_type === produceFilter;
+                        const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
+                        return matchesListingType && matchesCategory;
+                      }).length === 0 ? (
+                      <tr>
+                        <td colSpan="9" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                          No {produceFilter === "auction" ? "auction" : "direct buy"} listings found{categoryFilter ? ' in this category' : ''}. {!categoryFilter && "Click \"Post New Produce\" to get started!"}
+                        </td>
+                      </tr>
+                    ) : (
+                      producePosts
+                        .filter(post => {
+                          const matchesListingType = post.listing_type === produceFilter;
+                          const matchesCategory = categoryFilter === null || Number(post.category_id) === Number(categoryFilter);
+                          return matchesListingType && matchesCategory;
+                        })
+                        .map((post) => {
+                        const expiresAt = new Date(post.auction_end);
+                        const now = new Date();
+                        const diffTime = expiresAt - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        const expiresIn = diffDays > 0 ? `${diffDays} days` : 'Expired';
+                        
+                        return (
+                          <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-12 w-12 mr-4">
+                                  <img
+                                    className="h-12 w-12 rounded-lg object-cover"
+                                    src={post.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
+                                    alt={post.name}
+                                    onError={(e) => {
+                                      console.log('Image load error for:', post.name, 'URL:', post.image_url);
+                                      e.target.onerror = null;
+                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {post.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                                    <MapPin className="w-3 h-3 mr-1" />
+                                    {post.location}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {post.type}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              <div className="flex items-center">
+                                {post.listing_type === 'auction' ? (
+                                  <>
+                                    <span className="text-orange-600 text-lg mr-1">🔥</span>
+                                    <span>Auction</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-green-600 text-lg mr-1">🛒</span>
+                                    <span>Direct Buy</span>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {post.quantity} {post.unit}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {post.listing_type === 'auction' ? (
+                                <div className="font-semibold">₱{parseFloat(post.starting_bid || 0).toLocaleString()}</div>
+                              ) : (
+                                <div className="font-semibold text-green-600 dark:text-green-400">₱{parseFloat(post.buy_now_price || 0).toLocaleString()}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {post.listing_type === 'auction' ? (
+                                <>
+                                  <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    ₱{parseFloat(post.current_bid || post.starting_bid || 0).toLocaleString()}
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                                    <Users className="w-3 h-3 mr-1" />
+                                    {post.bidders_count || 0} bidders
+                                  </div>
+                                </>
+                              ) : (
+                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                  post.quantity > 0 
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                }`}>
+                                  {post.quantity > 0 ? 'In Stock' : 'Out of Stock'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {post.listing_type === 'auction' ? expiresIn : `${post.quantity} ${post.unit}`}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                                  post.approval_status === 'approved' ? post.status : post.approval_status
+                                )}`}
+                              >
+                                {post.approval_status === 'approved' ? post.status : post.approval_status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => handleManageStock(post)}
+                                  className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                                  title="Manage Stock Batches"
+                                >
+                                  <Package className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleEditClick(post)}
+                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteClick(post)}
+                                  className="text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300"
+                                  title="Archive"
+                                >
+                                  <Archive className="w-5 h-5" />
+                                </button>
+                                <button
+                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                  title="View Bidders"
+                                  onClick={() => handleViewBidders(post)}
+                                >
+                                  <Eye className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              </div>
+            )}
+
+            {/* Auction Sales Tab */}
+            {activeTab === "auction_sales" && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    Auction Sales & Payment Tracking
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Manage winning bids and track buyer payments
+                  </p>
+                </div>
+
+                {/* Winning Bids List */}
+                <div className="space-y-4">
+                  {winningBids.length === 0 ? (
+                    <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg">
+                      <Award className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No winning bids yet</h3>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        Winning auction bids will appear here
+                      </p>
+                    </div>
+                  ) : (
+                    winningBids.map((bid) => (
+                      <div key={bid.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-blue-200 dark:border-blue-800">
+                        {/* Bid Header */}
+                        <div className="px-6 py-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4">
+                              <Award className="w-5 h-5 text-blue-600" />
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white">{bid.listing?.name || "Product"}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Buyer: <span className="font-medium">{bid.buyer?.name || "N/A"}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                bid.payment_status === "paid" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
+                                bid.payment_status === "partial" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" :
+                                "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                              }`}>
+                                {bid.payment_status === "paid" ? "✅ Paid in Full" :
+                                 bid.payment_status === "partial" ? "⏳ Partially Paid" :
+                                 "❌ Unpaid"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bid Details */}
+                        <div className="p-6">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Winning Bid</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                ₱{parseFloat(bid.winning_bid_amount || bid.bid_amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                              <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                ₱{parseFloat(bid.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Remaining Balance</p>
+                              <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                ₱{parseFloat(bid.remaining_balance || (bid.winning_bid_amount || bid.bid_amount)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Payment Due Date</p>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {bid.payment_deadline ? new Date(bid.payment_deadline).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : "Not set"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Contact Info */}
+                          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              <span className="font-medium">Contact:</span> {bid.buyer?.email || "N/A"}
+                              {bid.buyer?.phone && <span className="ml-4">Phone: {bid.buyer.phone}</span>}
+                            </p>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-wrap gap-3">
+                            <button 
+                              onClick={() => {
+                                setSelectedBidForPayment(bid);
+                                setPaymentFormData({
+                                  ...paymentFormData,
+                                  payment_type: 'full',
+                                  amount: bid.remaining_balance || bid.winning_bid_amount || bid.bid_amount
+                                });
+                                setShowPaymentModal(true);
+                              }}
+                              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center"
+                            >
+                              <Banknote className="w-4 h-4 mr-2" />
+                              Record Payment
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setSelectedBidForHistory(bid);
+                                setShowPaymentHistoryModal(true);
+                              }}
+                              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              View Payment History
+                            </button>
+                            <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                              Contact Buyer
+                            </button>
+                          </div>
+
+                          {/* Recent Payments */}
+                          {bid.payments && bid.payments.length > 0 && (
+                            <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recent Payments:</p>
+                              <div className="space-y-2">
+                                {bid.payments.slice(0, 3).map((payment, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700/30 rounded p-2">
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                      {payment.payment_type === 'downpayment' ? '💰 Downpayment' : 
+                                       payment.payment_type === 'balance' ? '💵 Balance Payment' : 
+                                       '✅ Full Payment'}
+                                    </span>
+                                    <span className="font-medium text-gray-900 dark:text-white">
+                                      ₱{parseFloat(payment.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    </span>
+                                    <span className="text-gray-500 dark:text-gray-400">
+                                      {new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Revenue & Payouts Tab */}
+            {activeTab === "revenue" && (
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold">Total Revenue</h3>
+                      <DollarSign className="w-8 h-8" />
+                    </div>
+                    <p className="text-4xl font-bold mb-2">{stats.totalRevenue}</p>
+                    <p className="text-sm opacity-90">All-time earnings</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-6 text-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold">Pending Payout</h3>
+                      <Clock className="w-8 h-8" />
+                    </div>
+                    <p className="text-4xl font-bold mb-2">{stats.pendingPayout}</p>
+                    <p className="text-sm opacity-90">Processing</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold">Total Sales</h3>
+                      <CheckCircle className="w-8 h-8" />
+                    </div>
+                    <p className="text-4xl font-bold mb-2">{stats.completedSales}</p>
+                    <p className="text-sm opacity-90">Completed transactions</p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                    Recent Transactions
+                  </h3>
+                  <div className="space-y-4">
+                    {completedSales.map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className={`p-2 rounded-full ${
+                            sale.payoutStatus === "Paid" 
+                              ? "bg-green-100 dark:bg-green-900/20" 
+                              : "bg-yellow-100 dark:bg-yellow-900/20"
+                          }`}>
+                            {sale.payoutStatus === "Paid" ? (
+                              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+                            ) : (
+                              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                              {sale.name}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              Sold to {sale.buyer} • {sale.soldDate}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                            {sale.soldPrice}
+                          </p>
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full ${
+                              sale.payoutStatus === "Paid"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                            }`}
+                          >
+                            {sale.payoutStatus}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

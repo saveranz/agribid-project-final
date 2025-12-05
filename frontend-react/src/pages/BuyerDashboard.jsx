@@ -258,7 +258,8 @@ const BuyerDashboard = () => {
       }
       
       if (equipmentResponse.status === 'fulfilled' && equipmentResponse.value.data?.success) {
-        const equipment = equipmentResponse.value.data.data.data || [];
+        const equipmentData = equipmentResponse.value.data.data;
+        const equipment = equipmentData?.data || equipmentData || [];
         setEquipmentRentals(equipment);
       }
       
@@ -332,7 +333,8 @@ const BuyerDashboard = () => {
         
         if (equipmentResponse.value.data?.success) {
           console.log('Equipment Data Object:', equipmentResponse.value.data.data);
-          const equipment = equipmentResponse.value.data.data.data || [];
+          const equipmentData = equipmentResponse.value.data.data;
+          const equipment = equipmentData?.data || equipmentData || [];
           console.log('Equipment Array:', equipment);
           console.log('Equipment Count:', equipment.length);
           console.log('First Equipment Item:', equipment[0]);

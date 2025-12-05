@@ -25,7 +25,7 @@ class EquipmentController extends Controller
             return $this->fetchEquipment($request);
         });
         
-        return $this->success($result['data'], $result['message']);
+        return $this->success($result['message'], $result['data']);
     }
     
     protected function fetchEquipment(Request $request)
@@ -344,6 +344,6 @@ class EquipmentController extends Controller
             ];
         });
 
-        return $this->success($equipment, 'Your equipment retrieved successfully');
+        return $this->success('Your equipment retrieved successfully', $equipment);
     }
 }
