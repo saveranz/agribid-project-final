@@ -31,7 +31,11 @@ import {
   ChevronRight,
   CreditCard,
   X,
+  Trash2,
+  Plus,
+  Minus,
 } from "lucide-react";
+import Toast from "../components/Toast";
 import { ItemDetailsModal, BidModal, BuyNowModal, LocationMapModal, RentalModal } from "../components/BuyerModals";
 import { getListings, getFlashDeals, getAuctionListings, getDirectBuyListings } from "../api/Listing";
 import { getEquipment } from "../api/Equipment";
@@ -64,6 +68,9 @@ const BuyerDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [cart, setCart] = useState([]);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [criticalDataLoaded, setCriticalDataLoaded] = useState(false);
   
@@ -472,6 +479,55 @@ const BuyerDashboard = () => {
       console.error('Error toggling favorite:', error);
       console.error('Error details:', error.response?.data);
     }
+  };
+
+  // Cart functions
+  const addToCart = (item, quantity, unit) => {
+    const cartItem = {
+      id: item.id,
+      name: item.name,
+      image: item.image,
+      seller: item.seller,
+      price: item.price,
+      quantity: quantity,
+      unit: unit || item.unit,
+      rawQuantity: item.rawQuantity,
+      stock: item.stock,
+      addedAt: new Date().toISOString()
+    };
+
+    setCart(prev => {
+      // Check if item already exists in cart
+      const existingIndex = prev.findIndex(cartItem => cartItem.id === item.id);
+      
+      if (existingIndex !== -1) {
+        // Update quantity if item exists
+        const newCart = [...prev];
+        newCart[existingIndex].quantity += quantity;
+        setToastMessage(`${item.name} quantity updated in cart`);
+        setShowToast(true);
+        return newCart;
+      } else {
+        // Add new item
+        setToastMessage(`${quantity} ${unit || item.unit} of ${item.name}`);
+        setShowToast(true);
+        return [...prev, cartItem];
+      }
+    });
+  };
+
+  const removeFromCart = (itemId) => {
+    setCart(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  const updateCartQuantity = (itemId, newQuantity) => {
+    setCart(prev => prev.map(item => 
+      item.id === itemId ? { ...item, quantity: newQuantity } : item
+    ));
+  };
+
+  const clearCart = () => {
+    setCart([]);
   };
 
   const handleLogout = async () => {
@@ -1127,11 +1183,16 @@ const BuyerDashboard = () => {
                     4
                   </span>
                 </button>
-                <button className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0">
+                <button 
+                  onClick={() => setActiveTab('cart')}
+                  className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0"
+                >
                   <ShoppingCart className="w-5 md:w-6 h-5 md:h-6" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 md:w-5 h-4 md:h-5 flex items-center justify-center text-[10px] md:text-xs">
-                    2
-                  </span>
+                  {cart.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 md:w-5 h-4 md:h-5 flex items-center justify-center text-[10px] md:text-xs font-semibold">
+                      {cart.length}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -2152,6 +2213,188 @@ const BuyerDashboard = () => {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CART TAB */}
+            {activeTab === "cart" && (
+              <div className="max-w-7xl mx-auto">
+                <div className="mb-6">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">Shopping Cart</h1>
+                  <p className="text-gray-600 dark:text-gray-400">{cart.length} {cart.length === 1 ? 'item' : 'items'} in your cart</p>
+                </div>
+
+                {cart.length === 0 ? (
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center">
+                    <ShoppingCart className="w-24 h-24 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Your cart is empty</h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">Add items to your cart to see them here</p>
+                    <button
+                      onClick={() => setActiveTab('home')}
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg"
+                    >
+                      Start Shopping
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Cart Items */}
+                    <div className="lg:col-span-2 space-y-4">
+                      {cart.map((item, index) => {
+                        const itemTotal = item.price * item.quantity;
+                        return (
+                          <div key={item.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                            <div className="flex gap-4">
+                              {/* Product Image */}
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-24 h-24 md:w-28 md:h-28 object-cover rounded-lg flex-shrink-0"
+                              />
+                              
+                              {/* Product Info */}
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2">
+                                  {item.name}
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                                  by {item.seller}
+                                </p>
+                                
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                  {/* Price */}
+                                  <div>
+                                    <span className="text-xl font-bold text-green-600">
+                                      ₱{itemTotal.toLocaleString('en-PH', {minimumFractionDigits: 2})}
+                                    </span>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
+                                      ₱{item.price.toFixed(2)}/{item.unit}
+                                    </span>
+                                  </div>
+
+                                  {/* Quantity Controls */}
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center border-2 border-gray-300 dark:border-gray-600 rounded-lg">
+                                      <button
+                                        onClick={() => {
+                                          if (item.quantity > 1) {
+                                            updateCartQuantity(item.id, item.quantity - 1);
+                                          }
+                                        }}
+                                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                      >
+                                        <Minus className="w-4 h-4" />
+                                      </button>
+                                      <input
+                                        type="number"
+                                        value={item.quantity}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 1;
+                                          if (val > 0 && val <= item.rawQuantity) {
+                                            updateCartQuantity(item.id, val);
+                                          }
+                                        }}
+                                        className="w-16 text-center border-x-2 border-gray-300 dark:border-gray-600 py-2 bg-transparent focus:outline-none"
+                                        min="1"
+                                        max={item.rawQuantity}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          if (item.quantity < item.rawQuantity) {
+                                            updateCartQuantity(item.id, item.quantity + 1);
+                                          }
+                                        }}
+                                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                    
+                                    <button
+                                      onClick={() => removeFromCart(item.id)}
+                                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 className="w-5 h-5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                  Stock available: {item.rawQuantity} {item.unit}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Order Summary */}
+                    <div className="lg:col-span-1">
+                      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 sticky top-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Order Summary</h3>
+                        
+                        <div className="space-y-3 mb-6">
+                          <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                            <span>Subtotal ({cart.length} items)</span>
+                            <span>₱{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}</span>
+                          </div>
+                          <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                            <span>Shipping Fee</span>
+                            <span className="text-green-600">FREE</span>
+                          </div>
+                          <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-lg font-semibold text-gray-900 dark:text-white">Total</span>
+                              <span className="text-2xl font-bold text-green-600">
+                                ₱{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toLocaleString('en-PH', {minimumFractionDigits: 2})}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            navigate('/checkout', {
+                              state: {
+                                items: cart,
+                                subtotal: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                              }
+                            });
+                          }}
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl mb-3"
+                        >
+                          Proceed to Checkout
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab('home')}
+                          className="w-full border-2 border-green-600 text-green-600 hover:bg-green-50 dark:hover:bg-gray-700 py-3 rounded-xl font-semibold transition-all"
+                        >
+                          Continue Shopping
+                        </button>
+
+                        {/* Trust Badges */}
+                        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                              <CheckCircle className="w-5 h-5 text-green-600" />
+                              <span>Secure Payment</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                              <Truck className="w-5 h-5 text-green-600" />
+                              <span>Free Shipping</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                              <Award className="w-5 h-5 text-green-600" />
+                              <span>Quality Guarantee</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3411,23 +3654,38 @@ const BuyerDashboard = () => {
               </div>
 
               {/* Action Buttons */}
-              <button
-                onClick={() => {
-                  // Navigate to checkout with order data
-                  navigate('/checkout', {
-                    state: {
-                      item: selectedItem,
-                      quantity: orderQuantity,
-                      unit: selectedUnit,
-                      subtotal: pricePerUnit * orderQuantity
-                    }
-                  });
-                }}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center"
-              >
-                <ShoppingCart className="w-5 h-5 mr-2" />
-                Buy Now
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    addToCart(selectedItem, orderQuantity, selectedUnit);
+                    setShowUnitSelectionModal(false);
+                  }}
+                  className="group w-full bg-white dark:bg-gray-700 border-2 border-green-600 dark:border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-gray-600 py-3.5 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg hover:scale-[1.02]"
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
+                  Add to Cart
+                </button>
+                <button
+                  onClick={() => {
+                    // Navigate to checkout with order data
+                    navigate('/checkout', {
+                      state: {
+                        item: selectedItem,
+                        quantity: orderQuantity,
+                        unit: selectedUnit,
+                        subtotal: pricePerUnit * orderQuantity
+                      }
+                    });
+                  }}
+                  className="group relative w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-3.5 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 hover:scale-[1.02] overflow-hidden"
+                >
+                  <span className="relative z-10 flex items-center">
+                    <CreditCard className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
+                    Buy Now
+                  </span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-green-700 to-emerald-700 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3600,6 +3858,17 @@ const BuyerDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toastMessage}
+        isVisible={showToast}
+        onClose={() => setShowToast(false)}
+        onViewCart={() => {
+          setShowToast(false);
+          setActiveTab('cart');
+        }}
+      />
     </>
   );
 };
