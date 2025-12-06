@@ -171,7 +171,7 @@ const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                   value={formData.email}
                   onChange={handleChange}
                   required
-                  className="w-full pl-12 pr-4 py-3.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white transition-all bg-gray-50 dark:bg-gray-800/50"
+                  className="w-full pl-12 pr-4 py-3.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white transition-all bg-gray-50"
                 />
               </div>
             </div>
@@ -195,7 +195,7 @@ const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="w-full pl-12 pr-12 py-3.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white transition-all bg-gray-50 dark:bg-gray-800/50"
+                  className="w-full pl-12 pr-12 py-3.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white transition-all bg-gray-50"
                 />
                 <button
                   type="button"

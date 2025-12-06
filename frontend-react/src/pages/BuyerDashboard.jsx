@@ -1144,6 +1144,15 @@ const BuyerDashboard = () => {
                   Welcome, {userName}!
                 </p>
               </div>
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+              >
+                <Bell className="w-6 h-6" />
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                  4
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1350,15 +1359,6 @@ const BuyerDashboard = () => {
 
               {/* Right side icons */}
               <div className="flex items-center space-x-2 md:space-x-4">
-                <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0"
-                >
-                  <Bell className="w-5 md:w-6 h-5 md:h-6" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 md:w-5 h-4 md:h-5 flex items-center justify-center text-[10px] md:text-xs">
-                    4
-                  </span>
-                </button>
                 <button 
                   onClick={() => setActiveTab('cart')}
                   className="relative text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors p-1 md:p-0"
@@ -2484,69 +2484,74 @@ const BuyerDashboard = () => {
                   </div>
                 </div>
 
-                {/* Trust Score Breakdown */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Trust Score Breakdown</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Payment Reliability</span>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                          <div className="bg-green-600 h-2 rounded-full" style={{ width: '95%' }}></div>
+                {/* Trust Score & Achievement Section - Side by Side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Trust Score Breakdown */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Trust Score Breakdown</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Payment Reliability</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div className="bg-green-600 h-2 rounded-full" style={{ width: '95%' }}></div>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">95%</span>
                         </div>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">95%</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Communication</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div className="bg-blue-600 h-2 rounded-full" style={{ width: '88%' }}></div>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">88%</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Transaction Completion</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div className="bg-purple-600 h-2 rounded-full" style={{ width: '91%' }}></div>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">91%</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Profile Verification</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div className="bg-orange-600 h-2 rounded-full" style={{ width: '75%' }}></div>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">75%</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Communication</span>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                          <div className="bg-blue-600 h-2 rounded-full" style={{ width: '88%' }}></div>
+                  </div>
+
+                  {/* Achievement Badges */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Achievement Badges</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {profileStats.badges.slice(0, 4).map((badge) => (
+                        <div key={badge.id} className="flex items-center space-x-3 p-3 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                          <div className="text-2xl">{badge.icon}</div>
+                          <div>
+                            <div className="font-semibold text-gray-900 dark:text-white text-sm">{badge.name}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">{badge.description}</div>
+                          </div>
                         </div>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">88%</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Transaction Completion</span>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                          <div className="bg-purple-600 h-2 rounded-full" style={{ width: '91%' }}></div>
-                        </div>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">91%</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Profile Verification</span>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                          <div className="bg-orange-600 h-2 rounded-full" style={{ width: '75%' }}></div>
-                        </div>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white w-10">75%</span>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Achievement Badges */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Achievement Badges</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {profileStats.badges.slice(0, 4).map((badge) => (
-                      <div key={badge.id} className="flex items-center space-x-3 p-3 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg border border-green-200 dark:border-green-700">
-                        <div className="text-2xl">{badge.icon}</div>
-                        <div>
-                          <div className="font-semibold text-gray-900 dark:text-white text-sm">{badge.name}</div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400">{badge.description}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Delivery Address Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delivery Address</h3>
+                {/* Delivery Address & Recent Feedback Section - Side by Side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Delivery Address Section */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delivery Address</h3>
                     {!isEditingAddress && (
                       <button
                         onClick={() => {
@@ -2736,34 +2741,35 @@ const BuyerDashboard = () => {
                   )}
                 </div>
 
-                {/* Recent Feedback */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Seller Feedback</h3>
-                  <div className="space-y-4">
-                    {profileStats.recentFeedback.slice(0, 3).map((feedback) => (
-                      <div key={feedback.id} className="border-b border-gray-200 dark:border-gray-700 pb-4 last:border-b-0 last:pb-0">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <div className="font-semibold text-gray-900 dark:text-white text-sm">{feedback.seller}</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">{feedback.product}</div>
+                  {/* Recent Feedback */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 flex flex-col">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Seller Feedback</h3>
+                    <div className="space-y-4 flex-1">
+                      {profileStats.recentFeedback.slice(0, 3).map((feedback) => (
+                        <div key={feedback.id} className="border-b border-gray-200 dark:border-gray-700 pb-4 last:border-b-0 last:pb-0">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <div className="font-semibold text-gray-900 dark:text-white text-sm">{feedback.seller}</div>
+                              <div className="text-xs text-gray-600 dark:text-gray-400">{feedback.product}</div>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              {[...Array(5)].map((_, i) => (
+                                <Star 
+                                  key={i} 
+                                  className={`w-3 h-3 ${i < feedback.rating ? 'text-yellow-400 fill-current' : 'text-gray-300 dark:text-gray-600'}`} 
+                                />
+                              ))}
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            {[...Array(5)].map((_, i) => (
-                              <Star 
-                                key={i} 
-                                className={`w-3 h-3 ${i < feedback.rating ? 'text-yellow-400 fill-current' : 'text-gray-300 dark:text-gray-600'}`} 
-                              />
-                            ))}
-                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{feedback.comment}"</p>
                         </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{feedback.comment}"</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 text-center">
-                    <button className="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 text-sm font-medium">
-                      View All Feedback ({profileStats.totalReviews})
-                    </button>
+                      ))}
+                    </div>
+                    <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 text-center">
+                      <button className="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 text-sm font-medium">
+                        View All Feedback ({profileStats.totalReviews})
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
