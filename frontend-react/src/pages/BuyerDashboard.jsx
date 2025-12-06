@@ -90,6 +90,12 @@ const BuyerDashboard = () => {
   const [bidFilterStatus, setBidFilterStatus] = useState("");
   const [filteredBids, setFilteredBids] = useState([]);
   
+  // Pagination states
+  const [auctionPage, setAuctionPage] = useState(1);
+  const [directBuyPage, setDirectBuyPage] = useState(1);
+  const [equipmentPage, setEquipmentPage] = useState(1);
+  const itemsPerPage = 9;
+  
   // Profile statistics and ratings
   const [profileStats, setProfileStats] = useState({
     trustScore: 85,
@@ -1058,6 +1064,68 @@ const BuyerDashboard = () => {
     }
   };
 
+  // Pagination helpers
+  const paginateItems = (items, page) => {
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return items.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (items) => {
+    return Math.ceil(items.length / itemsPerPage);
+  };
+
+  const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-center space-x-2 mt-6">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Previous
+        </button>
+        
+        {[...Array(totalPages)].map((_, index) => {
+          const page = index + 1;
+          // Show first, last, current, and adjacent pages
+          if (
+            page === 1 ||
+            page === totalPages ||
+            (page >= currentPage - 1 && page <= currentPage + 1)
+          ) {
+            return (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`px-3 py-1 rounded ${
+                  currentPage === page
+                    ? 'bg-green-600 text-white'
+                    : 'border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                } transition-colors`}
+              >
+                {page}
+              </button>
+            );
+          } else if (page === currentPage - 2 || page === currentPage + 2) {
+            return <span key={page} className="px-2">...</span>;
+          }
+          return null;
+        })}
+        
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Next
+        </button>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="h-screen w-screen bg-gray-50 dark:bg-gray-950 overflow-hidden fixed inset-0">
@@ -1428,149 +1496,157 @@ const BuyerDashboard = () => {
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                    {getDisplayProducts().map((product) => (
-                      <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                        <div className="relative">
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="w-full h-40 object-cover cursor-pointer"
-                            loading="lazy"
-                            onClick={() => {
-                              setSelectedItem(product);
-                              setShowItemDetails(true);
-                            }}
-                            onError={(e) => {
-                              e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop&q=80';
-                            }}
-                          />
-                          {product.discount && (
-                            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold z-10">
-                              -{product.discount}
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+                        {paginateItems(getDisplayProducts(), directBuyPage).map((product) => (
+                          <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                            <div className="relative">
+                              <img
+                                src={product.image}
+                                alt={product.name}
+                                className="w-full h-40 object-cover cursor-pointer"
+                                loading="lazy"
+                                onClick={() => {
+                                  setSelectedItem(product);
+                                  setShowItemDetails(true);
+                                }}
+                                onError={(e) => {
+                                  e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop&q=80';
+                                }}
+                              />
+                              {product.discount && (
+                                <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold z-10">
+                                  -{product.discount}
+                                </div>
+                              )}
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleToggleFavorite(product.id);
+                                }}
+                                className="absolute top-2 right-2 p-2 bg-white/90 rounded-full shadow-md hover:bg-white hover:scale-110 transition-all z-20 cursor-pointer"
+                                style={{ pointerEvents: 'auto' }}
+                              >
+                                <Heart 
+                                  className={`w-4 h-4 transition-colors ${favoriteIds.has(product.id) ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`}
+                                />
+                              </button>
                             </div>
-                          )}
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              handleToggleFavorite(product.id);
-                            }}
-                            className="absolute top-2 right-2 p-2 bg-white/90 rounded-full shadow-md hover:bg-white hover:scale-110 transition-all z-20 cursor-pointer"
-                            style={{ pointerEvents: 'auto' }}
-                          >
-                            <Heart 
-                              className={`w-4 h-4 transition-colors ${favoriteIds.has(product.id) ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`}
-                            />
-                          </button>
-                        </div>
-                        
-                        <div className="p-3">
-                          <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-1 truncate">{product.name}</h4>
-                          <div className="flex items-center space-x-1 mb-2">
-                            <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                            <span className="text-xs text-gray-600 dark:text-gray-400">{product.rating}</span>
-                            <span className="text-xs text-gray-400">|</span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">{product.sold} sold</span>
-                          </div>
-                          
-                          <div className="mb-2">
-                            {product.listingType === "direct_buy" ? (
-                              <>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">Price per {product.unit}</div>
-                                {product.hasPriceRange && product.batchCount > 1 ? (
-                                  <div>
-                                    <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                                      {product.priceDisplay}
+                            
+                            <div className="p-3">
+                              <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-1 truncate">{product.name}</h4>
+                              <div className="flex items-center space-x-1 mb-2">
+                                <Star className="w-3 h-3 text-yellow-400 fill-current" />
+                                <span className="text-xs text-gray-600 dark:text-gray-400">{product.rating}</span>
+                                <span className="text-xs text-gray-400">|</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">{product.sold} sold</span>
+                              </div>
+                              
+                              <div className="mb-2">
+                                {product.listingType === "direct_buy" ? (
+                                  <>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">Price per {product.unit}</div>
+                                    {product.hasPriceRange && product.batchCount > 1 ? (
+                                      <div>
+                                        <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                                          {product.priceDisplay}
+                                        </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedItem(product);
+                                            setShowBatchPricingModal(true);
+                                          }}
+                                          className="mt-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
+                                        >
+                                          <Package className="w-3 h-3 mr-1" />
+                                          View {product.batchCount} price tiers
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <span className="text-green-600 font-bold text-lg">{product.priceDisplay || product.buyNowPrice}</span>
+                                      </div>
+                                    )}
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      {product.quantity} available
                                     </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedItem(product);
-                                        setShowBatchPricingModal(true);
-                                      }}
-                                      className="mt-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
-                                    >
-                                      <Package className="w-3 h-3 mr-1" />
-                                      View {product.batchCount} price tiers
-                                    </button>
-                                  </div>
+                                  </>
                                 ) : (
-                                  <div>
-                                    <span className="text-green-600 font-bold text-lg">{product.priceDisplay || product.buyNowPrice}</span>
-                                  </div>
+                                  <>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">Current Bid</div>
+                                    <span className="text-green-600 font-bold text-lg">{product.currentBid}</span>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      {product.quantity}
+                                    </div>
+                                  </>
                                 )}
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                  {product.quantity} available
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">Current Bid</div>
-                                <span className="text-green-600 font-bold text-lg">{product.currentBid}</span>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                  {product.quantity}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                          
-                          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-3">
-                            {product.listingType === "auction" ? (
-                              <>
-                                <span className="flex items-center">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  {product.expiresIn}
-                                </span>
-                                <span>{product.bidders} bids</span>
-                              </>
-                            ) : (
-                              <span className="flex items-center">
-                                <Package className="w-3 h-3 mr-1" />
-                                In Stock
-                              </span>
-                            )}
-                          </div>
+                              </div>
+                              
+                              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-3">
+                                {product.listingType === "auction" ? (
+                                  <>
+                                    <span className="flex items-center">
+                                      <Clock className="w-3 h-3 mr-1" />
+                                      {product.expiresIn}
+                                    </span>
+                                    <span>{product.bidders} bids</span>
+                                  </>
+                                ) : (
+                                  <span className="flex items-center">
+                                    <Package className="w-3 h-3 mr-1" />
+                                    In Stock
+                                  </span>
+                                )}
+                              </div>
 
-                          <div className="flex space-x-2">
-                            {product.listingType === "direct_buy" ? (
-                              <button 
-                                onClick={() => {
-                                  setSelectedItem(product);
-                                  setSelectedUnit(product.unit);
-                                  setOrderQuantity(1);
-                                  setShowUnitSelectionModal(true);
-                                }}
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-                              >
-                                Buy Now
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={() => {
-                                  setSelectedItem(product);
-                                  setShowBidModal(true);
-                                }}
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-                              >
-                                Place Bid
-                              </button>
-                            )}
-                            <button 
-                              onClick={() => {
-                                setSelectedItem(product);
-                                setShowItemDetails(true);
-                              }}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
+                              <div className="flex space-x-2">
+                                {product.listingType === "direct_buy" ? (
+                                  <button 
+                                    onClick={() => {
+                                      setSelectedItem(product);
+                                      setSelectedUnit(product.unit);
+                                      setOrderQuantity(1);
+                                      setShowUnitSelectionModal(true);
+                                    }}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                                  >
+                                    Buy Now
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => {
+                                      setSelectedItem(product);
+                                      setShowBidModal(true);
+                                    }}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                                  >
+                                    Place Bid
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => {
+                                    setSelectedItem(product);
+                                    setShowItemDetails(true);
+                                  }}
+                                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                      
+                      <PaginationControls 
+                        currentPage={directBuyPage}
+                        totalPages={getTotalPages(getDisplayProducts())}
+                        onPageChange={setDirectBuyPage}
+                      />
+                    </>
                   )}
                 </div>
               </div>
@@ -1599,8 +1675,9 @@ const BuyerDashboard = () => {
                       <p className="text-sm mt-2">Check back later for new auction listings!</p>
                     </div>
                   ) : (
+                    <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                    {auctionProducts.map((product) => (
+                    {paginateItems(auctionProducts, auctionPage).map((product) => (
                       <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
                         <div className="relative">
                           <img
@@ -1666,61 +1743,13 @@ const BuyerDashboard = () => {
                       </div>
                     ))}
                   </div>
-                  )}
-                </div>
-
-                {/* My Active Bids Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <TrendingUp className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">My Active Bids</h3>
-                  </div>
                   
-                  {biddingActivity.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                      <p className="text-sm">No active bids yet</p>
-                      <p className="text-xs mt-1">Start bidding on auction products above!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                    {biddingActivity.map((bid, index) => (
-                    <div key={bid.id} className={`p-4 border border-gray-200 dark:border-gray-600 rounded-lg`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <img
-                            src={bid.image}
-                            alt={bid.productName}
-                            className="w-16 h-16 object-cover rounded-lg"
-                            loading="lazy"
-                            onError={(e) => {
-                              e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&q=80';
-                            }}
-                          />
-                          <div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white">{bid.productName}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Your bid: <span className="font-semibold">{bid.myBid}</span></p>
-                          </div>
-                        </div>
-                        
-                        <div className="text-right space-y-1">
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Current Bid</p>
-                            <p className="font-bold text-lg text-gray-900 dark:text-white">{bid.currentBid}</p>
-                          </div>
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
-                            bid.status === "Winning" 
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                              : bid.status === "Outbid"
-                              ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                              : "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
-                          }`}>
-                            {bid.status}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  </div>
+                  <PaginationControls
+                    currentPage={auctionPage}
+                    totalPages={getTotalPages(auctionProducts)}
+                    onPageChange={setAuctionPage}
+                  />
+                  </>
                   )}
                 </div>
               </div>
@@ -1744,63 +1773,71 @@ const BuyerDashboard = () => {
                       <p className="text-gray-500 dark:text-gray-400">No equipment available at the moment</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                      {equipmentRentals.map((equipment) => (
-                      <div key={equipment.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                        <img
-                          src={equipment.image}
-                          alt={equipment.name}
-                          className="w-full h-48 object-cover"
-                          loading="lazy"
-                          onError={(e) => {
-                            e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop&q=60&auto=format';
-                          }}
-                        />
-                        <div className="p-4">
-                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-1">{equipment.name}</h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">by {equipment.owner}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 flex items-center">
-                            <MapPin className="w-4 h-4 mr-1" />
-                            {equipment.location}
-                          </p>
-                          
-                          <div className="flex items-center space-x-1 mb-3">
-                            <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                            <span className="text-sm font-semibold text-gray-900 dark:text-white">{equipment.rating}</span>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">({equipment.reviews} reviews)</span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center mb-4">
-                            <span className="font-bold text-purple-600 text-lg">{equipment.rate}</span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              equipment.available 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                            }`}>
-                              {equipment.available ? 'Available' : `Available ${equipment.nextAvailable}`}
-                            </span>
-                          </div>
-
-                          <button 
-                            disabled={!equipment.available}
-                            onClick={() => {
-                              if (equipment.available) {
-                                setSelectedItem(equipment);
-                                setShowRentalModal(true);
-                              }
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                        {paginateItems(equipmentRentals, equipmentPage).map((equipment) => (
+                        <div key={equipment.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                          <img
+                            src={equipment.image}
+                            alt={equipment.name}
+                            className="w-full h-48 object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              e.target.src = 'https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?w=400&h=300&fit=crop&q=60&auto=format';
                             }}
-                            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-                              equipment.available 
-                                ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                                : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            {equipment.available ? 'Rent Now' : 'Not Available'}
-                          </button>
+                          />
+                          <div className="p-4">
+                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-1">{equipment.name}</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">by {equipment.owner}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 flex items-center">
+                              <MapPin className="w-4 h-4 mr-1" />
+                              {equipment.location}
+                            </p>
+                            
+                            <div className="flex items-center space-x-1 mb-3">
+                              <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                              <span className="text-sm font-semibold text-gray-900 dark:text-white">{equipment.rating}</span>
+                              <span className="text-sm text-gray-500 dark:text-gray-400">({equipment.reviews} reviews)</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center mb-4">
+                              <span className="font-bold text-purple-600 text-lg">{equipment.rate}</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                equipment.available 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              }`}>
+                                {equipment.available ? 'Available' : `Available ${equipment.nextAvailable}`}
+                              </span>
+                            </div>
+
+                            <button 
+                              disabled={!equipment.available}
+                              onClick={() => {
+                                if (equipment.available) {
+                                  setSelectedItem(equipment);
+                                  setShowRentalModal(true);
+                                }
+                              }}
+                              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+                                equipment.available 
+                                  ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                                  : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                              }`}
+                            >
+                              {equipment.available ? 'Rent Now' : 'Not Available'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                    
+                    <PaginationControls 
+                      currentPage={equipmentPage}
+                      totalPages={getTotalPages(equipmentRentals)}
+                      onPageChange={setEquipmentPage}
+                    />
+                    </>
                   )}
                 </div>
 
@@ -1917,8 +1954,8 @@ const BuyerDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Orders List - Compact Cards */}
-                  <div className="p-4">
+                  {/* Orders List */}
+                  <div className="p-3 md:p-6">
                     {getFilteredOrders().length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16">
                         <Package className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
@@ -1934,81 +1971,69 @@ const BuyerDashboard = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="space-y-4">
                         {getFilteredOrders().map((order) => (
-                          <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden border border-gray-200 dark:border-gray-700">
-                            {/* Card Header with Image */}
-                            <div className="relative h-40 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                              <img 
-                                src={order.listing?.image_url?.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing?.image_url}`} 
-                                alt={order.listing?.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
-                                }}
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                              <div className="absolute top-2 right-2 flex flex-col gap-1.5">
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg ${
-                                  order.status === 'pending' ? 'bg-yellow-500 text-white' :
-                                  order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-500 text-white' :
-                                  order.status === 'shipped' ? 'bg-purple-500 text-white' :
-                                  order.status === 'delivered' ? 'bg-green-500 text-white' :
-                                  'bg-red-500 text-white'
-                                }`}>
-                                  {order.status === 'pending' ? 'To Pay' :
-                                   order.status === 'confirmed' ? 'Confirmed' :
-                                   order.status === 'processing' ? 'Processing' :
-                                   order.status === 'shipped' ? 'Shipped' :
-                                   order.status === 'delivered' ? 'Delivered' :
-                                   order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                                </span>
-                                {order.delivery_method === 'pickup' && (
-                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg bg-indigo-500 text-white">
-                                    📦 Pickup
+                          <div key={order.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                            {/* Order Header */}
+                            <div className="bg-gray-50 dark:bg-gray-700 px-3 md:px-4 py-2 md:py-3 border-b border-gray-200 dark:border-gray-600">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2 md:space-x-4">
+                                  <Package className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                                  <span className="font-semibold text-gray-900 dark:text-white">
+                                    {order.seller?.name || 'Unknown Seller'}
                                   </span>
-                                )}
-                              </div>
-                              <div className="absolute bottom-2 left-2 right-2">
-                                <div className="flex items-center justify-between text-white text-xs">
-                                  <span className="font-medium truncate">Order #{order.id}</span>
-                                  <span className="font-semibold">₱{parseFloat(order.total_amount).toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                                    order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' :
+                                    order.status === 'shipped' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400' :
+                                    order.status === 'delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                                    'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                  }`}>
+                                    {order.status.toUpperCase()}
+                                  </span>
+                                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    #{order.id}
+                                  </span>
                                 </div>
                               </div>
                             </div>
-                            
-                            {/* Card Content */}
-                            <div className="p-4 space-y-3">
-                              <div>
-                                <h4 className="font-semibold text-base text-gray-900 dark:text-white line-clamp-1 mb-1">{order.listing?.name}</h4>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Seller: {order.seller?.name || 'Unknown'}</p>
-                              </div>
-                              
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-2.5 border border-orange-100 dark:border-orange-800">
-                                  <p className="text-xs text-orange-700 dark:text-orange-300 mb-0.5">Quantity</p>
-                                  <p className="font-bold text-sm text-orange-600 dark:text-orange-400">{order.quantity} {order.unit}</p>
+
+                            {/* Order Body */}
+                            <div className="p-3 md:p-4">
+                              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+                                <img 
+                                  src={order.listing?.image_url?.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing?.image_url}`} 
+                                  alt={order.listing?.name}
+                                  className="w-full sm:w-20 h-32 sm:h-20 object-cover rounded"
+                                  onError={(e) => {
+                                    e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                  }}
+                                />
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-gray-900 dark:text-white mb-1">
+                                    {order.listing?.name}
+                                  </h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    Quantity: {order.quantity} {order.unit}
+                                  </p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    ₱{parseFloat(order.price_per_unit).toFixed(2)} / {order.unit}
+                                  </p>
                                 </div>
-                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 border border-gray-200 dark:border-gray-600">
-                                  <p className="text-xs text-gray-700 dark:text-gray-300 mb-0.5">Price/Unit</p>
-                                  <p className="font-bold text-sm text-gray-900 dark:text-white">₱{parseFloat(order.price_per_unit).toFixed(2)}</p>
+                                <div className="text-right">
+                                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                                    Order Total
+                                  </div>
+                                  <div className="text-lg font-bold text-orange-600">
+                                    ₱{parseFloat(order.total_amount).toFixed(2)}
+                                  </div>
                                 </div>
                               </div>
 
-                              {/* Pickup Notes - Compact */}
-                              {order.delivery_method === 'pickup' && order.pickup_notes && (
-                                <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg p-2">
-                                  <div className="flex items-start space-x-1.5">
-                                    <Package className="w-3.5 h-3.5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                      <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-300 mb-0.5">Pickup Notes:</p>
-                                      <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{order.pickup_notes}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              <div className="flex items-center gap-2">
+                              {/* Order Actions */}
+                              <div className="flex items-center justify-end space-x-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 {order.status === 'pending' && (
                                   <button
                                     onClick={() => {
@@ -2016,31 +2041,24 @@ const BuyerDashboard = () => {
                                         handleCancelOrder(order.id, 'Changed my mind');
                                       }
                                     }}
-                                    className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-xs font-medium transition-colors"
+                                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                                   >
-                                    Cancel
+                                    Cancel Order
                                   </button>
                                 )}
                                 {order.status === 'shipped' && (
                                   <button
                                     onClick={() => handleOrderReceived(order.id)}
-                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-xs font-medium transition-colors"
+                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium"
                                   >
                                     Order Received
                                   </button>
                                 )}
                                 {order.status === 'delivered' && (
                                   <button
-                                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg text-xs font-medium transition-colors"
+                                    className="px-4 py-2 border border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg text-sm font-medium"
                                   >
                                     Rate & Review
-                                  </button>
-                                )}
-                                {order.status !== 'pending' && order.status !== 'shipped' && order.status !== 'delivered' && (
-                                  <button
-                                    className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-xs font-medium transition-colors"
-                                  >
-                                    Track Order
                                   </button>
                                 )}
                               </div>
@@ -2049,158 +2067,6 @@ const BuyerDashboard = () => {
                         ))}
                       </div>
                     )}
-                  </div>
-                </div>
-
-                {/* For Pickup Orders - Separate Section */}
-                <div className="mt-8 pt-8 border-t-2 border-indigo-200 dark:border-indigo-800">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                        <Package className="w-8 h-8 mr-3 text-indigo-600" />
-                        For Pickup Orders
-                      </h2>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        Orders ready for pickup - no delivery fee
-                      </p>
-                    </div>
-                    <span className="px-4 py-2 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-full text-sm font-semibold">
-                      {userOrders.filter(o => o.delivery_method === 'pickup').length} Orders
-                    </span>
-                  </div>
-
-                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                    <div className="p-4">
-                      {userOrders.filter(order => order.delivery_method === 'pickup').length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16">
-                          <Package className="w-16 h-16 text-indigo-300 dark:text-indigo-600 mb-4" />
-                          <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            No Pickup Orders
-                          </h3>
-                          <p className="text-gray-500 dark:text-gray-400 text-center">
-                            You don't have any orders for pickup at the moment
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {userOrders
-                            .filter(order => order.delivery_method === 'pickup')
-                            .map((order) => (
-                              <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden border-2 border-indigo-200 dark:border-indigo-800">
-                                {/* Card Header with Image */}
-                                <div className="relative h-40 bg-gradient-to-br from-indigo-100 to-indigo-200 dark:from-indigo-900 dark:to-indigo-800">
-                                  <img 
-                                    src={order.listing?.image_url?.startsWith('http') ? order.listing.image_url : `http://localhost:8000${order.listing?.image_url}`} 
-                                    alt={order.listing?.name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
-                                    }}
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                                  <div className="absolute top-2 right-2 flex flex-col gap-1.5">
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg bg-indigo-500 text-white">
-                                      📦 For Pickup
-                                    </span>
-                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg ${
-                                      order.status === 'pending' ? 'bg-yellow-500 text-white' :
-                                      order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-500 text-white' :
-                                      order.status === 'shipped' ? 'bg-purple-500 text-white' :
-                                      order.status === 'delivered' ? 'bg-green-500 text-white' :
-                                      'bg-red-500 text-white'
-                                    }`}>
-                                      {order.status === 'pending' ? 'Pending' :
-                                       order.status === 'confirmed' ? 'Confirmed' :
-                                       order.status === 'processing' ? 'Preparing' :
-                                       order.status === 'shipped' ? 'Ready' :
-                                       order.status === 'delivered' ? 'Picked Up' :
-                                       order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                                    </span>
-                                  </div>
-                                  <div className="absolute bottom-2 left-2 right-2">
-                                    <div className="flex items-center justify-between text-white text-xs">
-                                      <span className="font-medium truncate">Order #{order.id}</span>
-                                      <div className="flex flex-col items-end">
-                                        <span className="font-semibold">₱{parseFloat(order.total_amount).toFixed(2)}</span>
-                                        <span className="text-green-300 text-[10px]">No Shipping Fee</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                {/* Card Content */}
-                                <div className="p-4 space-y-3">
-                                  <div>
-                                    <h4 className="font-semibold text-base text-gray-900 dark:text-white line-clamp-1 mb-1">{order.listing?.name}</h4>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">Seller: {order.seller?.name || 'Unknown'}</p>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-2.5 border border-indigo-100 dark:border-indigo-800">
-                                      <p className="text-xs text-indigo-700 dark:text-indigo-300 mb-0.5">Quantity</p>
-                                      <p className="font-bold text-sm text-indigo-600 dark:text-indigo-400">{order.quantity} {order.unit}</p>
-                                    </div>
-                                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 border border-gray-200 dark:border-gray-600">
-                                      <p className="text-xs text-gray-700 dark:text-gray-300 mb-0.5">Price/Unit</p>
-                                      <p className="font-bold text-sm text-gray-900 dark:text-white">₱{parseFloat(order.price_per_unit).toFixed(2)}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Pickup Notes - Compact */}
-                                  {order.pickup_notes && (
-                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg p-2">
-                                      <div className="flex items-start space-x-1.5">
-                                        <Package className="w-3.5 h-3.5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                                        <div>
-                                          <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-300 mb-0.5">Pickup Notes:</p>
-                                          <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{order.pickup_notes}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  <div className="flex items-center gap-2">
-                                    {order.status === 'pending' && (
-                                      <button
-                                        onClick={() => {
-                                          if (window.confirm('Are you sure you want to cancel this order?')) {
-                                            handleCancelOrder(order.id, 'Changed my mind');
-                                          }
-                                        }}
-                                        className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-xs font-medium transition-colors"
-                                      >
-                                        Cancel
-                                      </button>
-                                    )}
-                                    {order.status === 'shipped' && (
-                                      <button
-                                        onClick={() => handleOrderReceived(order.id)}
-                                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-medium transition-colors"
-                                      >
-                                        Confirm Picked Up
-                                      </button>
-                                    )}
-                                    {order.status === 'delivered' && (
-                                      <button
-                                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-medium transition-colors"
-                                      >
-                                        Rate & Review
-                                      </button>
-                                    )}
-                                    {order.status !== 'pending' && order.status !== 'shipped' && order.status !== 'delivered' && (
-                                      <button
-                                        className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-xs font-medium transition-colors"
-                                      >
-                                        Contact Seller
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -2913,135 +2779,121 @@ const BuyerDashboard = () => {
                   </h1>
                 </div>
                 
-                {/* Pickup Orders List */}
+                {/* Pickup Orders List - Compact Cards */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                  <div className="p-6">
+                  <div className="p-4">
                     {userOrders.filter(o => o.delivery_method === 'pickup').length > 0 ? (
-                      <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {userOrders
                           .filter(order => order.delivery_method === 'pickup')
                           .map((order) => (
-                            <div key={order.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                              {/* Order Header */}
-                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center space-x-4">
-                                    <Package className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                                    <div>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400">Order ID:</span>
-                                      <span className="ml-2 font-semibold text-gray-900 dark:text-white">#{order.id}</span>
+                            <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden border-2 border-indigo-200 dark:border-indigo-800">
+                              {/* Card Header with Image */}
+                              <div className="relative h-40 bg-gradient-to-br from-indigo-100 to-purple-200 dark:from-indigo-900 dark:to-purple-800">
+                                <img
+                                  src={order.listing?.image_url || order.product?.image || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop'}
+                                  alt={order.listing?.name || order.product?.name || 'Product'}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=300&fit=crop';
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                                <div className="absolute top-2 right-2 flex flex-col gap-1.5">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg bg-indigo-500 text-white">
+                                    📦 For Pickup
+                                  </span>
+                                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg ${
+                                    order.status === 'pending' ? 'bg-yellow-500 text-white' :
+                                    order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-500 text-white' :
+                                    order.status === 'delivered' ? 'bg-green-500 text-white' :
+                                    order.status === 'cancelled' ? 'bg-red-500 text-white' :
+                                    'bg-gray-500 text-white'
+                                  }`}>
+                                    {order.status === 'pending' ? '⏳ To Pay' :
+                                     order.status === 'confirmed' ? '📦 Ready' :
+                                     order.status === 'processing' ? '📦 Preparing' :
+                                     order.status === 'delivered' ? '✅ Picked Up' :
+                                     order.status === 'cancelled' ? '❌ Cancelled' :
+                                     order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                                  </span>
+                                </div>
+                                <div className="absolute bottom-2 left-2 right-2">
+                                  <div className="flex items-center justify-between text-white text-xs">
+                                    <span className="font-medium truncate">Order #{order.id}</span>
+                                    <div className="flex flex-col items-end">
+                                      <span className="font-semibold">₱{parseFloat(order.total_amount || 0).toFixed(2)}</span>
+                                      <span className="text-green-300 text-[10px]">No Shipping Fee</span>
                                     </div>
-                                    <div className="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
-                                    <div>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400">Seller:</span>
-                                      <span className="ml-2 font-medium text-gray-900 dark:text-white">{order.seller?.name || order.farmer?.name || "N/A"}</span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-3">
-                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 flex items-center">
-                                      <Package className="w-3 h-3 mr-1" />
-                                      FOR PICKUP
-                                    </span>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
-                                      order.status === 'confirmed' || order.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
-                                      order.status === 'delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                                      order.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                                      'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
-                                    }`}>
-                                      {order.status === 'pending' && '⏳ To Pay'}
-                                      {order.status === 'confirmed' && '📦 Ready for Pickup'}
-                                      {order.status === 'processing' && '📦 Preparing'}
-                                      {order.status === 'delivered' && '✅ Picked Up'}
-                                      {order.status === 'cancelled' && '❌ Cancelled'}
-                                      {!['pending', 'confirmed', 'processing', 'delivered', 'cancelled'].includes(order.status) && order.status}
-                                    </span>
                                   </div>
                                 </div>
                               </div>
-
-                              {/* Order Content */}
-                              <div className="p-6">
-                                <div className="flex items-start space-x-4">
-                                  <img
-                                    src={order.listing?.image_url || order.product?.image || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&q=80'}
-                                    alt={order.listing?.name || order.product?.name || 'Product'}
-                                    className="w-24 h-24 object-cover rounded-lg"
-                                    onError={(e) => {
-                                      e.target.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=100&h=100&fit=crop&q=80';
-                                    }}
-                                  />
-                                  <div className="flex-1">
-                                    <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
-                                      {order.listing?.name || order.product?.name || 'Product'}
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
-                                      <div>
-                                        <p className="text-gray-600 dark:text-gray-400">Quantity</p>
-                                        <p className="font-medium text-gray-900 dark:text-white">
-                                          {order.quantity} {order.listing?.unit || 'kg'}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-600 dark:text-gray-400">Unit Price</p>
-                                        <p className="font-medium text-gray-900 dark:text-white">
-                                          ₱{parseFloat(order.unit_price || order.listing?.buy_now_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-600 dark:text-gray-400">Total Amount</p>
-                                        <p className="font-bold text-lg text-green-600 dark:text-green-400">
-                                          ₱{parseFloat(order.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-600 dark:text-gray-400">Payment Method</p>
-                                        <p className="font-medium text-gray-900 dark:text-white capitalize">
-                                          {order.payment_method || 'N/A'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    
-                                    {/* Pickup Location */}
-                                    <div className="mt-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4">
-                                      <div className="flex items-start">
-                                        <MapPin className="w-5 h-5 text-indigo-600 dark:text-indigo-400 mr-2 mt-0.5" />
-                                        <div>
-                                          <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-1">Pickup Location</p>
-                                          <p className="text-sm text-indigo-700 dark:text-indigo-400">
-                                            {order.delivery_address || order.listing?.location || 'Location not specified'}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Order Date */}
-                                    <div className="mt-3 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                                      <Clock className="w-4 h-4 mr-1" />
-                                      Ordered on {new Date(order.created_at).toLocaleDateString('en-US', {
-                                        year: 'numeric',
-                                        month: 'long',
-                                        day: 'numeric'
-                                      })}
-                                    </div>
+                              
+                              {/* Card Content */}
+                              <div className="p-4 space-y-3">
+                                <div>
+                                  <h4 className="font-semibold text-base text-gray-900 dark:text-white line-clamp-1 mb-1">
+                                    {order.listing?.name || order.product?.name || 'Product'}
+                                  </h4>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Seller: {order.seller?.name || order.farmer?.name || 'N/A'}
+                                  </p>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-2.5 border border-indigo-100 dark:border-indigo-800">
+                                    <p className="text-xs text-indigo-700 dark:text-indigo-300 mb-0.5">Quantity</p>
+                                    <p className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                                      {order.quantity} {order.listing?.unit || 'kg'}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 border border-gray-200 dark:border-gray-600">
+                                    <p className="text-xs text-gray-700 dark:text-gray-300 mb-0.5">Price/Unit</p>
+                                    <p className="font-bold text-sm text-gray-900 dark:text-white">
+                                      ₱{parseFloat(order.unit_price || order.listing?.buy_now_price || 0).toFixed(2)}
+                                    </p>
                                   </div>
                                 </div>
 
-                                {/* Action Buttons */}
-                                <div className="mt-4 flex justify-end space-x-3">
+                                {/* Pickup Location - Compact */}
+                                <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg p-2">
+                                  <div className="flex items-start space-x-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                      <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-300 mb-0.5">Pickup Location:</p>
+                                      <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">
+                                        {order.delivery_address || order.listing?.location || 'Location not specified'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2">
                                   {order.status === 'pending' && (
-                                    <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                    <button className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-xs font-medium transition-colors">
                                       Pay Now
                                     </button>
                                   )}
                                   {order.status === 'confirmed' && (
-                                    <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                    <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-medium transition-colors">
                                       Contact Seller
                                     </button>
                                   )}
-                                  <button className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors">
-                                    View Details
-                                  </button>
+                                  {order.status !== 'pending' && order.status !== 'confirmed' && (
+                                    <button className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-xs font-medium transition-colors">
+                                      View Details
+                                    </button>
+                                  )}
+                                </div>
+                                
+                                {/* Order Date - Compact */}
+                                <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {new Date(order.created_at).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
                                 </div>
                               </div>
                             </div>
